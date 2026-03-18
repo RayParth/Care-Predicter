@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "279008552521",
+    "project_id": "carepredicter",
+    "storage_bucket": "carepredicter.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:279008552521:android:f7aa38d31f301b67e68198",
+        "android_client_info": {
+          "package_name": "com.care_predicter.care_predicter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwE3zMhcD18QMUT4H4_5NXq7o0DQmOHAs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

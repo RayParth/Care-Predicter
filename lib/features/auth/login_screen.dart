@@ -17,31 +17,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
-
     try {
-      // Start Google sign-in flow
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-
       if (googleUser == null) {
-        // User cancelled
         setState(() => _isLoading = false);
         return;
       }
-
-      // Get auth credentials
       final GoogleSignInAuthentication googleAuth =
       await googleUser.authentication;
-
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-
-      // Sign in to Firebase
       await FirebaseAuth.instance.signInWithCredential(credential);
-
       if (mounted) {
-        // Go to role selection screen
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -59,7 +48,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
       }
     }
-
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -72,11 +60,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 28.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Spacer(flex: 2),
-
-              // App logo
+              // Logo
               Container(
                 width: 88,
                 height: 88,
@@ -88,7 +74,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Container(
                     width: 44,
                     height: 44,
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: AppColors.primaryLight,
                       shape: BoxShape.circle,
                     ),
@@ -96,7 +82,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: Container(
                         width: 18,
                         height: 18,
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           color: AppColors.primary,
                           shape: BoxShape.circle,
                         ),
@@ -105,9 +91,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 28),
-
               // App name
               const Text(
                 'Care Predicter',
@@ -118,21 +102,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   letterSpacing: -0.5,
                 ),
               ),
-
               const SizedBox(height: 8),
-
-              // Tagline
               const Text(
                 'Monitor · Analyse · Stay healthy',
                 style: TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary,
-                  letterSpacing: 0.2,
                 ),
               ),
-
               const Spacer(flex: 2),
-
               // Feature pills
               Wrap(
                 spacing: 8,
@@ -146,10 +124,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   _FeaturePill('Doctor consult'),
                 ],
               ),
-
               const SizedBox(height: 40),
-
-              // Google sign in button
+              // Sign in button
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -188,10 +164,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 16),
-
-              // Security note
               const Text(
                 'Secured by Firebase · Your data is private',
                 style: TextStyle(
@@ -200,7 +173,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-
               const Spacer(),
             ],
           ),
@@ -210,7 +182,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-// Small feature pill widget
 class _FeaturePill extends StatelessWidget {
   final String label;
   const _FeaturePill(this.label);

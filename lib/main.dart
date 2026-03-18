@@ -23,10 +23,8 @@ class CarePredicterApp extends StatelessWidget {
       title: 'Care Predicter',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        fontFamily: 'Inter',
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.primary,
-          background: AppColors.background,
         ),
         scaffoldBackgroundColor: AppColors.white,
         useMaterial3: true,

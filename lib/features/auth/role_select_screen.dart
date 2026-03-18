@@ -17,7 +17,6 @@ class RoleSelectScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
-
               const Text(
                 'Select your role',
                 style: TextStyle(
@@ -26,9 +25,7 @@ class RoleSelectScreen extends ConsumerWidget {
                   color: AppColors.textPrimary,
                 ),
               ),
-
               const SizedBox(height: 8),
-
               const Text(
                 'This determines what you see in Care Predicter',
                 style: TextStyle(
@@ -36,10 +33,7 @@ class RoleSelectScreen extends ConsumerWidget {
                   color: AppColors.textSecondary,
                 ),
               ),
-
               const SizedBox(height: 32),
-
-              // Patient card
               _RoleCard(
                 title: 'Patient / User',
                 subtitle: 'Monitor your own health vitals,\nupload lab reports, chat with AI',
@@ -52,16 +46,14 @@ class RoleSelectScreen extends ConsumerWidget {
                 isHighlighted: true,
                 onTap: () {
                   ref.read(userRoleProvider.notifier).state = 'patient';
-                  // TODO: Navigate to patient home screen
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Patient dashboard coming next!')),
+                    const SnackBar(
+                      content: Text('Patient dashboard — coming next!'),
+                    ),
                   );
                 },
               ),
-
               const SizedBox(height: 16),
-
-              // Doctor card
               _RoleCard(
                 title: 'Doctor',
                 subtitle: 'View patient summaries,\nconsultations, AI-generated reports',
@@ -74,9 +66,10 @@ class RoleSelectScreen extends ConsumerWidget {
                 isHighlighted: false,
                 onTap: () {
                   ref.read(userRoleProvider.notifier).state = 'doctor';
-                  // TODO: Navigate to doctor home screen
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Doctor dashboard coming next!')),
+                    const SnackBar(
+                      content: Text('Doctor dashboard — coming next!'),
+                    ),
                   );
                 },
               ),
@@ -174,7 +167,9 @@ class _RoleCard extends StatelessWidget {
                 Icon(
                   Icons.arrow_forward_ios_rounded,
                   size: 16,
-                  color: isHighlighted ? AppColors.primary : AppColors.textHint,
+                  color: isHighlighted
+                      ? AppColors.primary
+                      : AppColors.textHint,
                 ),
               ],
             ),
