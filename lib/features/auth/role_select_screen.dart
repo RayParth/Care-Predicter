@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/colors.dart';
 import '../../core/providers/auth_provider.dart';
+import '../dashboard/home_screen.dart';
 
 class RoleSelectScreen extends ConsumerWidget {
   const RoleSelectScreen({super.key});
@@ -46,9 +47,10 @@ class RoleSelectScreen extends ConsumerWidget {
                 isHighlighted: true,
                 onTap: () {
                   ref.read(userRoleProvider.notifier).state = 'patient';
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Patient dashboard — coming next!'),
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const HomeScreen(),
                     ),
                   );
                 },
