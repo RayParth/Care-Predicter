@@ -4,6 +4,7 @@ import '../../core/constants/colors.dart';
 import '../../shared/widgets/bottom_nav_bar.dart';
 import '../../shared/widgets/metric_card.dart';
 import '../lab/lab_upload_screen.dart';
+import '../organ_map/organ_map_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -28,7 +29,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             currentIndex: _currentIndex,
             onTap: (index) {
               setState(() => _currentIndex = index);
-              if (index == 3) {
+              if (index == 1) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const OrganMapScreen(),
+                  ),
+                );
+              } else if (index == 3) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
