@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/colors.dart';
 import '../../shared/widgets/bottom_nav_bar.dart';
 import '../../shared/widgets/metric_card.dart';
+import '../lab/lab_upload_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -27,8 +28,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             currentIndex: _currentIndex,
             onTap: (index) {
               setState(() => _currentIndex = index);
-              // Navigation to other screens will be added later
-              if (index != 0) {
+              if (index == 3) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LabUploadScreen(),
+                  ),
+                );
+              } else if (index != 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(_getScreenName(index) + ' — coming soon!'),
