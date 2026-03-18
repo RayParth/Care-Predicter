@@ -12,7 +12,20 @@
           "package_name": "com.care_predicter.care_predicter"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "279008552521-3vv7ril30l5fmt5i861uea14mu0ofdc6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.care_predicter.care_predicter",
+            "certificate_hash": "f59b0d620a568ef95a2dc2217783afc553fe9554"
+          }
+        },
+        {
+          "client_id": "279008552521-v2i6a9fds83vmgac4nl5slo6ecsn6lo9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBwE3zMhcD18QMUT4H4_5NXq7o0DQmOHAs"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "279008552521-v2i6a9fds83vmgac4nl5slo6ecsn6lo9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
