@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/colors.dart';
 import '../../shared/widgets/bottom_nav_bar.dart';
 import '../../shared/widgets/metric_card.dart';
+import '../chat/ai_chat_screen.dart';
 import '../lab/lab_upload_screen.dart';
 import '../organ_map/organ_map_screen.dart';
 
@@ -34,6 +35,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => const OrganMapScreen(),
+                  ),
+                );
+              } else if (index == 2) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AiChatScreen(),
                   ),
                 );
               } else if (index == 3) {
