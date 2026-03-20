@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/colors.dart';
-import '../consult/consult_screen.dart';
+import '../main_shell.dart';
+
 
 class AlertScreen extends StatefulWidget {
   final String parameter;
@@ -351,12 +353,12 @@ class _AlertScreenState extends State<AlertScreen>
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ConsultScreen(),
-                ),
-              );
+              Navigator.pop(context);
+              // Switch to Consult tab (index 4) in MainShell
+              Future.delayed(Duration.zero, () {
+                final container = ProviderScope.containerOf(context, listen: false);
+                container.read(shellIndexProvider.notifier).state = 4;
+              });
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,

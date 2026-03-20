@@ -34,71 +34,54 @@ class MetricCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border, width: 1),
+          border: Border.all(color: AppColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Label
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textSecondary,
-              ),
-            ),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 11, color: AppColors.textSecondary)),
             const SizedBox(height: 4),
-            // Value + unit
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
+                Text(value,
+                    style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary)),
                 const SizedBox(width: 3),
-                Text(
-                  unit,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
+                Text(unit,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary)),
               ],
             ),
             const SizedBox(height: 6),
-            // Progress bar
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: progress,
+                value: progress.clamp(0.0, 1.0),
                 backgroundColor: AppColors.surface,
-                valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                valueColor:
+                AlwaysStoppedAnimation<Color>(progressColor),
                 minHeight: 5,
               ),
             ),
             const SizedBox(height: 6),
-            // Status badge
             Container(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: statusBg,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                status,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: statusColor,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+                  color: statusBg,
+                  borderRadius: BorderRadius.circular(10)),
+              child: Text(status,
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: statusColor,
+                      fontWeight: FontWeight.w500)),
             ),
           ],
         ),

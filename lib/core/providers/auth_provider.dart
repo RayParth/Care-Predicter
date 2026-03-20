@@ -6,3 +6,4 @@ final authStateProvider = StreamProvider<User?>((ref) {
 });
 
 final userRoleProvider = StateProvider<String?>((ref) => null);
+final backendUserIdProvider = StateProvider<int?>((ref) => null);
