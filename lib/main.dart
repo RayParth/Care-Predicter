@@ -7,11 +7,7 @@ import 'features/auth/login_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(
-    const ProviderScope(
-      child: CarePredicterApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: CarePredicterApp()));
 }
 
 class CarePredicterApp extends StatelessWidget {
@@ -23,9 +19,8 @@ class CarePredicterApp extends StatelessWidget {
       title: 'Care Predicter',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.primary,
-        ),
+        colorScheme:
+        ColorScheme.fromSeed(seedColor: AppColors.primary),
         scaffoldBackgroundColor: AppColors.white,
         useMaterial3: true,
       ),

@@ -15,16 +15,15 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
 
-  Future<void> _signInWithGoogle() async {
+  Future<void> _signIn() async {
     setState(() => _isLoading = true);
     try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      final googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
         setState(() => _isLoading = false);
         return;
       }
-      final GoogleSignInAuthentication googleAuth =
-      await googleUser.authentication;
+      final googleAuth = await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
@@ -34,18 +33,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const RoleSelectScreen(),
-          ),
+              builder: (context) => const RoleSelectScreen()),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sign in failed: ${e.toString()}'),
-            backgroundColor: AppColors.danger,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Sign in failed: $e'),
+          backgroundColor: AppColors.danger,
+        ));
       }
     }
     if (mounted) setState(() => _isLoading = false);
@@ -53,124 +49,107 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     return Scaffold(
       backgroundColor: AppColors.white,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28.0),
+          padding: EdgeInsets.symmetric(
+              horizontal: size.width * 0.07),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(flex: 2),
-              // Logo
               Container(
-                width: 88,
-                height: 88,
+                width: 80,
+                height: 80,
                 decoration: BoxDecoration(
                   color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(22),
                 ),
                 child: Center(
                   child: Container(
-                    width: 44,
-                    height: 44,
+                    width: 40,
+                    height: 40,
                     decoration: const BoxDecoration(
-                      color: AppColors.primaryLight,
-                      shape: BoxShape.circle,
-                    ),
+                        color: AppColors.primaryLight,
+                        shape: BoxShape.circle),
                     child: Center(
                       child: Container(
-                        width: 18,
-                        height: 18,
+                        width: 16,
+                        height: 16,
                         decoration: const BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                        ),
+                            color: AppColors.primary,
+                            shape: BoxShape.circle),
                       ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 28),
-              // App name
-              const Text(
-                'Care Predicter',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                  letterSpacing: -0.5,
-                ),
-              ),
+              const SizedBox(height: 24),
+              const Text('Care Predicter',
+                  style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.5)),
               const SizedBox(height: 8),
-              const Text(
-                'Monitor · Analyse · Stay healthy',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                ),
-              ),
+              const Text('Monitor · Analyse · Stay healthy',
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textSecondary)),
               const Spacer(flex: 2),
-              // Feature pills
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 alignment: WrapAlignment.center,
                 children: const [
-                  _FeaturePill('Health tracking'),
-                  _FeaturePill('Lab OCR'),
-                  _FeaturePill('AI chat'),
-                  _FeaturePill('Organ map'),
-                  _FeaturePill('Doctor consult'),
+                  _Pill('Health tracking'),
+                  _Pill('Lab OCR'),
+                  _Pill('AI chat'),
+                  _Pill('Organ map'),
+                  _Pill('Doctor consult'),
                 ],
               ),
-              const SizedBox(height: 40),
-              // Sign in button
+              const SizedBox(height: 36),
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _signInWithGoogle,
+                  onPressed: _isLoading ? null : _signIn,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: AppColors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
                     elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
                   ),
                   child: _isLoading
                       ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      color: AppColors.white,
-                      strokeWidth: 2.5,
-                    ),
-                  )
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          color: AppColors.white,
+                          strokeWidth: 2.5))
                       : const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment:
+                    MainAxisAlignment.center,
                     children: [
                       Icon(Icons.login_rounded, size: 20),
                       SizedBox(width: 10),
-                      Text(
-                        'Continue with Gmail',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      Text('Continue with Gmail',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight:
+                              FontWeight.w500)),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               const Text(
                 'Secured by Firebase · Your data is private',
                 style: TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textHint,
-                ),
+                    fontSize: 11, color: AppColors.textHint),
                 textAlign: TextAlign.center,
               ),
               const Spacer(),
@@ -182,26 +161,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-class _FeaturePill extends StatelessWidget {
+class _Pill extends StatelessWidget {
   final String label;
-  const _FeaturePill(this.label);
+  const _Pill(this.label);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+          horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.primaryLight,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 12,
-          color: AppColors.primaryDark,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+          color: AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(20)),
+      child: Text(label,
+          style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.primaryDark,
+              fontWeight: FontWeight.w500)),
     );
   }
 }
