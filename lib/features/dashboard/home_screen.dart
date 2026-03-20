@@ -6,6 +6,8 @@ import '../../shared/widgets/metric_card.dart';
 import '../chat/ai_chat_screen.dart';
 import '../lab/lab_upload_screen.dart';
 import '../organ_map/organ_map_screen.dart';
+import '../alert/alert_screen.dart';
+import '../consult/consult_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -31,33 +33,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onTap: (index) {
               setState(() => _currentIndex = index);
               if (index == 1) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const OrganMapScreen(),
-                  ),
-                );
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (context) => const OrganMapScreen()));
               } else if (index == 2) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AiChatScreen(),
-                  ),
-                );
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (context) => const AiChatScreen()));
               } else if (index == 3) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const LabUploadScreen(),
-                  ),
-                );
-              } else if (index != 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(_getScreenName(index) + ' — coming soon!'),
-                    duration: const Duration(seconds: 1),
-                  ),
-                );
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (context) => const LabUploadScreen()));
+              } else if (index == 4) {
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (context) => const ConsultScreen()));
               }
             },
           ),
@@ -347,6 +333,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 _buildLabRow('Triglycerides', '140 mg/dL', 'Borderline', false),
                 _buildLabRow('Creatinine', '0.9 mg/dL', 'Normal', true),
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AlertScreen(),
+                ),
+              );
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.dangerLight,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFF09595)),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.warning_rounded, color: AppColors.danger, size: 20),
+                  SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Test emergency alert',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF791F1F),
+                        ),
+                      ),
+                      Text(
+                        'Tap to see alert screen',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFFA32D2D),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
