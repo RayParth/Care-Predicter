@@ -228,12 +228,18 @@ class LabUploadTab extends ConsumerWidget {
             contentType: 'multipart/form-data'),
       );
 
-      final data =
-      response.data as Map<String, dynamic>;
-      final labValues =
-      data['lab_values'] as Map<String, dynamic>;
-      final rawText =
-          (data['extracted_text'] as String?) ?? '';
+      final data = response.data as Map<String, dynamic>;
+
+// Try both keys — backend returns both
+      final labValues = (data['lab_values'] as Map<String, dynamic>?)
+          ?? (data['extracted_values'] as Map<String, dynamic>?)
+          ?? {};
+
+      final rawText = (data['raw_text_preview'] as String?) ?? '';
+
+      print('OCR status: ${data['status']}');
+      print('Values found: ${data['values_found']}');
+      print('Raw text preview: $rawText');
 
       if (labValues.isEmpty) {
         ref.read(_errorProvider.notifier).state =

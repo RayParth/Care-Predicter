@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../core/constants/colors.dart';
 import '../../core/providers/user_provider.dart';
 import '../../core/providers/auth_provider.dart';
@@ -10,6 +12,7 @@ import '../../shared/services/health_connect.dart';
 import '../../shared/services/api_service.dart';
 import '../main_shell.dart';
 import '../alert/alert_screen.dart';
+import '../auth/login_screen.dart';
 
 // Real health data provider
 final healthDataProvider =
@@ -39,20 +42,17 @@ class HomeTab extends ConsumerWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(
-                      color: AppColors.primary),
+                  CircularProgressIndicator(color: AppColors.primary),
                   SizedBox(height: 16),
                   Text('Fetching health data...',
                       style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary)),
+                          fontSize: 13, color: AppColors.textSecondary)),
                 ],
               ),
             ),
-            error: (e, _) => _buildContent(
-                context, ref, profile, {}, error: e.toString()),
-            data: (data) =>
-                _buildContent(context, ref, profile, data),
+            error: (e, _) =>
+                _buildContent(context, ref, profile, {}, error: e.toString()),
+            data: (data) => _buildContent(context, ref, profile, data),
           ),
         ),
       ),
@@ -72,19 +72,15 @@ class HomeTab extends ConsumerWidget {
     final dia = (data['diastolic'] as double?) ?? 0.0;
     final score = healthService.calculateHealthScore(data);
 
-    // Auto-save vitals to backend
     _saveToBackend(ref, data);
-
-    // Check for critical alerts
     final criticalAlert = _getCriticalAlert(hr, spo2, temp);
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       child: Column(
         children: [
-          _header(profile, score, sys, dia),
-          if (criticalAlert != null)
-            _criticalBanner(context, criticalAlert),
+          _buildHeader(context, ref, profile, score, sys, dia),
+          if (criticalAlert != null) _criticalBanner(context, criticalAlert),
           if (error != null) _errorBanner(error),
           const SizedBox(height: 12),
           _metricGrid(hr, spo2, steps, cal, sleep, temp),
@@ -148,8 +144,10 @@ class HomeTab extends ConsumerWidget {
     }
   }
 
-  Widget _header(UserProfile profile, int score,
-      double sys, double dia) {
+  // ── HEADER WITH LOGOUT ──────────────────────────────────────────────────
+
+  Widget _buildHeader(BuildContext context, WidgetRef ref,
+      UserProfile profile, int score, double sys, double dia) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
@@ -157,43 +155,89 @@ class HomeTab extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _greeting(),
-            style: const TextStyle(
-                fontSize: 13, color: AppColors.primaryMid),
+          // Top row — greeting + logout button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _greeting(),
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.primaryMid),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    profile.name.isNotEmpty ? profile.name : 'Welcome',
+                    style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.white),
+                  ),
+                  if (profile.age > 0)
+                    Text(
+                      '${profile.age}y · ${profile.gender} · ${profile.bloodGroup}',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.primaryMid),
+                    ),
+                ],
+              ),
+              // Logout button
+              GestureDetector(
+                onTap: () async {
+                  await GoogleSignIn().signOut();
+                  await FirebaseAuth.instance.signOut();
+                  await ref.read(userProfileProvider.notifier).clear();
+                  if (context.mounted) {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const LoginScreen()),
+                          (_) => false,
+                    );
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryDark,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.logout_rounded,
+                          color: AppColors.primaryMid, size: 14),
+                      SizedBox(width: 4),
+                      Text('Logout',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.primaryMid)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            profile.name.isNotEmpty ? profile.name : 'Welcome',
-            style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w600,
-                color: AppColors.white),
-          ),
-          if (profile.age > 0)
-            Text(
-              '${profile.age}y · ${profile.gender} · ${profile.bloodGroup}',
-              style: const TextStyle(
-                  fontSize: 11, color: AppColors.primaryMid),
-            ),
           const SizedBox(height: 14),
+          // Health score card
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
                 color: AppColors.primaryDark,
                 borderRadius: BorderRadius.circular(16)),
             child: Row(
-              mainAxisAlignment:
-              MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('Health score',
                         style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.primaryMid)),
+                            fontSize: 11, color: AppColors.primaryMid)),
                     const SizedBox(height: 4),
                     Text('$score',
                         style: const TextStyle(
@@ -211,25 +255,20 @@ class HomeTab extends ConsumerWidget {
                           ? 'Fair — monitor closely'
                           : 'Needs attention',
                       style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.tealMid),
+                          fontSize: 12, color: AppColors.tealMid),
                     ),
                   ],
                 ),
                 Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                          color:
-                          AppColors.teal.withOpacity(0.2),
-                          borderRadius:
-                          BorderRadius.circular(20)),
-                      child: const Text(
-                          'Health Connect: Live',
+                          color: AppColors.teal.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20)),
+                      child: const Text('Health Connect: Live',
                           style: TextStyle(
                               fontSize: 10,
                               color: AppColors.tealMid,
@@ -242,8 +281,7 @@ class HomeTab extends ConsumerWidget {
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                             color: AppColors.dangerLight,
-                            borderRadius:
-                            BorderRadius.circular(20)),
+                            borderRadius: BorderRadius.circular(20)),
                         child: Text(
                             'BP: ${sys.toStringAsFixed(0)}/${dia.toStringAsFixed(0)}',
                             style: const TextStyle(
@@ -256,10 +294,8 @@ class HomeTab extends ConsumerWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                            color: AppColors.primaryLight
-                                .withOpacity(0.1),
-                            borderRadius:
-                            BorderRadius.circular(20)),
+                            color: AppColors.primaryLight.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20)),
                         child: const Text('Pull to refresh',
                             style: TextStyle(
                                 fontSize: 10,
@@ -302,8 +338,7 @@ class HomeTab extends ConsumerWidget {
         decoration: BoxDecoration(
           color: AppColors.dangerLight,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: const Color(0xFFF09595), width: 2),
+          border: Border.all(color: const Color(0xFFF09595), width: 2),
         ),
         child: Row(children: [
           const Icon(Icons.warning_rounded,
@@ -321,8 +356,7 @@ class HomeTab extends ConsumerWidget {
                         color: Color(0xFF791F1F))),
                 Text(alert['message']!,
                     style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFFA32D2D))),
+                        fontSize: 11, color: Color(0xFFA32D2D))),
               ],
             ),
           ),
@@ -345,15 +379,13 @@ class HomeTab extends ConsumerWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFFAC775)),
       ),
-      child: Row(children: [
-        const Icon(Icons.info_rounded,
-            color: AppColors.warning, size: 18),
-        const SizedBox(width: 8),
-        const Expanded(
+      child: const Row(children: [
+        Icon(Icons.info_rounded, color: AppColors.warning, size: 18),
+        SizedBox(width: 8),
+        Expanded(
           child: Text(
             'Health Connect data unavailable. Make sure Health Connect app is installed and permissions are granted.',
-            style: TextStyle(
-                fontSize: 11, color: AppColors.warning),
+            style: TextStyle(fontSize: 11, color: AppColors.warning),
           ),
         ),
       ]),
@@ -379,150 +411,60 @@ class HomeTab extends ConsumerWidget {
             label: 'Heart rate',
             value: fmt(hr),
             unit: hr > 0 ? 'bpm' : '',
-            status: hr <= 0
-                ? 'No data'
-                : hr > 100 || hr < 60
-                ? 'Abnormal'
-                : 'Normal',
-            statusColor: hr <= 0
-                ? AppColors.textHint
-                : hr > 100 || hr < 60
-                ? AppColors.danger
-                : AppColors.success,
-            statusBg: hr <= 0
-                ? AppColors.surface
-                : hr > 100 || hr < 60
-                ? AppColors.dangerLight
-                : AppColors.successLight,
-            progress: hr > 0
-                ? (hr / 180).clamp(0.0, 1.0)
-                : 0,
+            status: hr <= 0 ? 'No data' : hr > 100 || hr < 60 ? 'Abnormal' : 'Normal',
+            statusColor: hr <= 0 ? AppColors.textHint : hr > 100 || hr < 60 ? AppColors.danger : AppColors.success,
+            statusBg: hr <= 0 ? AppColors.surface : hr > 100 || hr < 60 ? AppColors.dangerLight : AppColors.successLight,
+            progress: hr > 0 ? (hr / 180).clamp(0.0, 1.0) : 0,
             progressColor: AppColors.tealMid,
           ),
           MetricCard(
             label: 'SpO₂',
             value: fmt(spo2),
             unit: spo2 > 0 ? '%' : '',
-            status: spo2 <= 0
-                ? 'No data'
-                : spo2 < 90
-                ? 'Critical'
-                : spo2 < 95
-                ? 'Low'
-                : 'Excellent',
-            statusColor: spo2 <= 0
-                ? AppColors.textHint
-                : spo2 < 90
-                ? AppColors.danger
-                : spo2 < 95
-                ? AppColors.warning
-                : AppColors.success,
-            statusBg: spo2 <= 0
-                ? AppColors.surface
-                : spo2 < 90
-                ? AppColors.dangerLight
-                : spo2 < 95
-                ? AppColors.warningLight
-                : AppColors.successLight,
-            progress: spo2 > 0
-                ? (spo2 / 100).clamp(0.0, 1.0)
-                : 0,
+            status: spo2 <= 0 ? 'No data' : spo2 < 90 ? 'Critical' : spo2 < 95 ? 'Low' : 'Excellent',
+            statusColor: spo2 <= 0 ? AppColors.textHint : spo2 < 90 ? AppColors.danger : spo2 < 95 ? AppColors.warning : AppColors.success,
+            statusBg: spo2 <= 0 ? AppColors.surface : spo2 < 90 ? AppColors.dangerLight : spo2 < 95 ? AppColors.warningLight : AppColors.successLight,
+            progress: spo2 > 0 ? (spo2 / 100).clamp(0.0, 1.0) : 0,
             progressColor: AppColors.tealMid,
           ),
           MetricCard(
             label: 'Steps today',
             value: steps > 0 ? steps.toString() : '--',
             unit: '',
-            status: steps <= 0
-                ? 'No data'
-                : steps >= 10000
-                ? 'Goal reached!'
-                : '${((steps / 10000) * 100).toStringAsFixed(0)}% of goal',
-            statusColor: steps <= 0
-                ? AppColors.textHint
-                : AppColors.blue,
-            statusBg: steps <= 0
-                ? AppColors.surface
-                : AppColors.blueLight,
-            progress: steps > 0
-                ? (steps / 10000).clamp(0.0, 1.0)
-                : 0,
+            status: steps <= 0 ? 'No data' : steps >= 10000 ? 'Goal reached!' : '${((steps / 10000) * 100).toStringAsFixed(0)}% of goal',
+            statusColor: steps <= 0 ? AppColors.textHint : AppColors.blue,
+            statusBg: steps <= 0 ? AppColors.surface : AppColors.blueLight,
+            progress: steps > 0 ? (steps / 10000).clamp(0.0, 1.0) : 0,
             progressColor: AppColors.blue,
           ),
           MetricCard(
             label: 'Calories',
             value: cal > 0 ? cal.toStringAsFixed(0) : '--',
             unit: cal > 0 ? 'kcal' : '',
-            status: cal <= 0
-                ? 'No data'
-                : cal > 1500
-                ? 'Active day'
-                : 'Keep moving',
-            statusColor: cal <= 0
-                ? AppColors.textHint
-                : AppColors.warning,
-            statusBg: cal <= 0
-                ? AppColors.surface
-                : AppColors.warningLight,
-            progress: cal > 0
-                ? (cal / 2500).clamp(0.0, 1.0)
-                : 0,
+            status: cal <= 0 ? 'No data' : cal > 1500 ? 'Active day' : 'Keep moving',
+            statusColor: cal <= 0 ? AppColors.textHint : AppColors.warning,
+            statusBg: cal <= 0 ? AppColors.surface : AppColors.warningLight,
+            progress: cal > 0 ? (cal / 2500).clamp(0.0, 1.0) : 0,
             progressColor: const Color(0xFFEF9F27),
           ),
           MetricCard(
             label: 'Sleep',
             value: fmt(sleep, decimals: 1),
             unit: sleep > 0 ? 'hrs' : '',
-            status: sleep <= 0
-                ? 'No data'
-                : sleep >= 7
-                ? 'Good'
-                : sleep >= 6
-                ? 'Fair'
-                : 'Low',
-            statusColor: sleep <= 0
-                ? AppColors.textHint
-                : sleep >= 7
-                ? AppColors.success
-                : AppColors.warning,
-            statusBg: sleep <= 0
-                ? AppColors.surface
-                : sleep >= 7
-                ? AppColors.successLight
-                : AppColors.warningLight,
-            progress: sleep > 0
-                ? (sleep / 9).clamp(0.0, 1.0)
-                : 0,
+            status: sleep <= 0 ? 'No data' : sleep >= 7 ? 'Good' : sleep >= 6 ? 'Fair' : 'Low',
+            statusColor: sleep <= 0 ? AppColors.textHint : sleep >= 7 ? AppColors.success : AppColors.warning,
+            statusBg: sleep <= 0 ? AppColors.surface : sleep >= 7 ? AppColors.successLight : AppColors.warningLight,
+            progress: sleep > 0 ? (sleep / 9).clamp(0.0, 1.0) : 0,
             progressColor: AppColors.primary,
           ),
           MetricCard(
             label: 'Temperature',
             value: fmt(temp, decimals: 1),
             unit: temp > 0 ? '°C' : '',
-            status: temp <= 0
-                ? 'No data'
-                : temp > 38.5
-                ? 'Fever'
-                : temp > 37.5
-                ? 'Elevated'
-                : 'Normal',
-            statusColor: temp <= 0
-                ? AppColors.textHint
-                : temp > 38.5
-                ? AppColors.danger
-                : temp > 37.5
-                ? AppColors.warning
-                : AppColors.success,
-            statusBg: temp <= 0
-                ? AppColors.surface
-                : temp > 38.5
-                ? AppColors.dangerLight
-                : temp > 37.5
-                ? AppColors.warningLight
-                : AppColors.successLight,
-            progress: temp > 0
-                ? ((temp - 35) / 6).clamp(0.0, 1.0)
-                : 0,
+            status: temp <= 0 ? 'No data' : temp > 38.5 ? 'Fever' : temp > 37.5 ? 'Elevated' : 'Normal',
+            statusColor: temp <= 0 ? AppColors.textHint : temp > 38.5 ? AppColors.danger : temp > 37.5 ? AppColors.warning : AppColors.success,
+            statusBg: temp <= 0 ? AppColors.surface : temp > 38.5 ? AppColors.dangerLight : temp > 37.5 ? AppColors.warningLight : AppColors.successLight,
+            progress: temp > 0 ? ((temp - 35) / 6).clamp(0.0, 1.0) : 0,
             progressColor: AppColors.tealMid,
           ),
         ],
@@ -538,8 +480,7 @@ class HomeTab extends ConsumerWidget {
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: const BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.only(
@@ -547,8 +488,7 @@ class HomeTab extends ConsumerWidget {
                     topRight: Radius.circular(14)),
               ),
               child: Row(
-                mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Latest lab report',
                       style: TextStyle(
@@ -556,12 +496,10 @@ class HomeTab extends ConsumerWidget {
                           fontWeight: FontWeight.w600,
                           color: AppColors.textPrimary)),
                   GestureDetector(
-                    onTap: () => ref
-                        .read(shellIndexProvider.notifier)
-                        .state = 3,
+                    onTap: () =>
+                    ref.read(shellIndexProvider.notifier).state = 3,
                     child: const StatusBadge(
-                        label: 'Upload new →',
-                        type: BadgeType.info),
+                        label: 'Upload new →', type: BadgeType.info),
                   ),
                 ],
               ),
@@ -569,8 +507,7 @@ class HomeTab extends ConsumerWidget {
             _labRow('Glucose', '94 mg/dL', false),
             _labRow('Hemoglobin', '13.2 g/dL', false),
             _labRow('Cholesterol', '178 mg/dL', false),
-            _labRow('Triglycerides', '140 mg/dL', false,
-                isBorderline: true),
+            _labRow('Triglycerides', '140 mg/dL', false, isBorderline: true),
             _labRow('Creatinine', '0.9 mg/dL', true),
           ],
         ),
@@ -581,22 +518,18 @@ class HomeTab extends ConsumerWidget {
   Widget _labRow(String name, String value, bool isLast,
       {bool isBorderline = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         border: isLast
             ? null
-            : Border(
-            bottom: BorderSide(
-                color: AppColors.border, width: 0.5)),
+            : Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(name,
               style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary)),
+                  fontSize: 12, color: AppColors.textSecondary)),
           Row(children: [
             Text(value,
                 style: const TextStyle(
@@ -606,9 +539,7 @@ class HomeTab extends ConsumerWidget {
             const SizedBox(width: 8),
             StatusBadge(
               label: isBorderline ? 'Borderline' : 'Normal',
-              type: isBorderline
-                  ? BadgeType.warning
-                  : BadgeType.normal,
+              type: isBorderline ? BadgeType.warning : BadgeType.normal,
             ),
           ]),
         ],
@@ -620,22 +551,18 @@ class HomeTab extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: GestureDetector(
-        onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => const AlertScreen())),
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AlertScreen())),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: AppColors.dangerLight,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-                color: const Color(0xFFF09595)),
+            border: Border.all(color: const Color(0xFFF09595)),
           ),
           child: Row(children: const [
-            Icon(Icons.warning_rounded,
-                color: AppColors.danger, size: 20),
+            Icon(Icons.warning_rounded, color: AppColors.danger, size: 20),
             SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -646,9 +573,7 @@ class HomeTab extends ConsumerWidget {
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF791F1F))),
                 Text('Tap to see alert screen',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFFA32D2D))),
+                    style: TextStyle(fontSize: 11, color: Color(0xFFA32D2D))),
               ],
             ),
           ]),
@@ -663,12 +588,10 @@ class HomeTab extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.refresh_rounded,
-              size: 14, color: AppColors.textHint),
+          Icon(Icons.refresh_rounded, size: 14, color: AppColors.textHint),
           SizedBox(width: 4),
           Text('Pull down to refresh health data',
-              style: TextStyle(
-                  fontSize: 11, color: AppColors.textHint)),
+              style: TextStyle(fontSize: 11, color: AppColors.textHint)),
         ],
       ),
     );
