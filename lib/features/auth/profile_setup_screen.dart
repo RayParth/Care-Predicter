@@ -8,6 +8,7 @@ import '../../core/providers/auth_provider.dart';
 import '../../shared/widgets/app_button.dart';
 import '../../shared/widgets/app_text_field.dart';
 import '../../shared/services/api_service.dart';
+import '../doctor/doctor_shell.dart';
 import '../main_shell.dart';
 
 class ProfileSetupScreen extends ConsumerStatefulWidget {
@@ -84,7 +85,11 @@ class _ProfileSetupScreenState
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const MainShell()),
+        MaterialPageRoute(
+          builder: (_) => profile.role == 'doctor'
+              ? const DoctorShell()
+              : const MainShell(),
+        ),
       );
     }
   }
