@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:dio/dio.dart';
 import '../../core/constants/colors.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../shared/services/api_service.dart';
@@ -30,6 +30,7 @@ class LabUploadTab extends ConsumerWidget {
     final saved = ref.watch(_savedProvider);
     final error = ref.watch(_errorProvider);
     final fileName = ref.watch(_fileNameProvider);
+    final rawText = ref.watch(_rawTextProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -43,10 +44,11 @@ class LabUploadTab extends ConsumerWidget {
               _uploadCard(context, ref, fileName),
               const SizedBox(height: 12),
               if (extracting) _extractingCard(),
-              if (error != null) _errorCard(error),
-              if (results.isNotEmpty)
-                _resultsCard(context, ref, results, saved),
+              if (error != null) _errorCard(context, ref, error),
+              if (results.isNotEmpty) _resultsCard(context, ref, results, saved),
               if (results.isNotEmpty) _aiTip(results),
+              // Show raw text preview for debugging during development
+              if (rawText.isNotEmpty && results.isEmpty) _rawTextDebug(rawText),
               const SizedBox(height: 24),
             ],
           ),
@@ -69,17 +71,15 @@ class LabUploadTab extends ConsumerWidget {
                   fontWeight: FontWeight.w600,
                   color: AppColors.white)),
           SizedBox(height: 4),
-          Text(
-              'Upload PDF, JPG, JPEG or PNG — OCR extracts values',
-              style: TextStyle(
-                  fontSize: 12, color: AppColors.primaryMid)),
+          Text('Upload PDF, JPG, JPEG or PNG — OCR extracts values',
+              style: TextStyle(fontSize: 12, color: AppColors.primaryMid)),
         ],
       ),
     );
   }
 
-  Widget _uploadCard(BuildContext context, WidgetRef ref,
-      String? fileName) {
+  Widget _uploadCard(
+      BuildContext context, WidgetRef ref, String? fileName) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: AppCard(
@@ -96,7 +96,7 @@ class LabUploadTab extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              fileName ?? 'Upload PDF or photo',
+              fileName ?? 'Upload your lab report',
               style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -104,31 +104,45 @@ class LabUploadTab extends ConsumerWidget {
                       ? AppColors.primary
                       : AppColors.textPrimary),
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 4),
-            const Text(
-                'Supports PDF, JPG, JPEG, PNG files',
+            const Text('Supports PDF, JPG, JPEG, PNG',
                 style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary)),
+                    fontSize: 12, color: AppColors.textSecondary)),
             const SizedBox(height: 16),
             Row(children: [
               Expanded(
-                child: AppButton(
-                  label: 'Take photo',
-                  icon: Icons.camera_alt_rounded,
-                  onTap: () =>
-                      _pickCamera(context, ref),
+                child: ElevatedButton.icon(
+                  onPressed: () => _pickCamera(context, ref),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                  label: const Text('Take photo',
+                      style: TextStyle(fontSize: 13)),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: AppButton(
-                  label: 'Browse file',
-                  icon: Icons.folder_open_rounded,
-                  isOutlined: true,
-                  onTap: () =>
-                      _pickFile(context, ref),
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickFile(context, ref),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.folder_open_rounded, size: 18),
+                  label: const Text('Browse file',
+                      style: TextStyle(fontSize: 13)),
                 ),
               ),
             ]),
@@ -138,12 +152,12 @@ class LabUploadTab extends ConsumerWidget {
     );
   }
 
-  Future<void> _pickCamera(
-      BuildContext context, WidgetRef ref) async {
+  Future<void> _pickCamera(BuildContext context, WidgetRef ref) async {
+    // Request camera permission
     final status = await Permission.camera.request();
     if (!status.isGranted) {
       ref.read(_errorProvider.notifier).state =
-      'Camera permission denied. Please allow camera access in phone settings.';
+      'Camera permission denied. Go to phone Settings → Apps → Care Predicter → Permissions → Allow camera.';
       return;
     }
 
@@ -151,54 +165,44 @@ class LabUploadTab extends ConsumerWidget {
       final picker = ImagePicker();
       final photo = await picker.pickImage(
         source: ImageSource.camera,
-        imageQuality: 90,
+        imageQuality: 100,
         preferredCameraDevice: CameraDevice.rear,
       );
-      if (photo != null) {
-        ref.read(_fileNameProvider.notifier).state = photo.name;
-        await _uploadAndExtract(
-            context, ref, File(photo.path), photo.name);
-      }
+      if (photo == null) return;
+
+      ref.read(_fileNameProvider.notifier).state = photo.name;
+      await _upload(context, ref, File(photo.path), photo.name);
     } catch (e) {
-      ref.read(_errorProvider.notifier).state =
-      'Camera error: $e';
-      print('Camera error: $e');
+      ref.read(_errorProvider.notifier).state = 'Camera error: $e';
     }
   }
 
-  Future<void> _pickFile(
-      BuildContext context, WidgetRef ref) async {
-    // Request storage permission first
-    final status = await Permission.storage.request();
-    final photosStatus = await Permission.photos.request();
-
-    print('Storage permission: $status');
-    print('Photos permission: $photosStatus');
-
+  Future<void> _pickFile(BuildContext context, WidgetRef ref) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
         allowMultiple: false,
-        withData: false,
-        withReadStream: false,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        final name = result.files.single.name;
-        ref.read(_fileNameProvider.notifier).state = name;
-        await _uploadAndExtract(context, ref, file, name);
+      if (result == null || result.files.isEmpty) return;
+      final picked = result.files.first;
+      if (picked.path == null) {
+        ref.read(_errorProvider.notifier).state =
+        'Could not access file path. Try again.';
+        return;
       }
+
+      ref.read(_fileNameProvider.notifier).state = picked.name;
+      await _upload(context, ref, File(picked.path!), picked.name);
     } catch (e) {
-      ref.read(_errorProvider.notifier).state =
-      'File picker error: $e';
-      print('File picker error: $e');
+      ref.read(_errorProvider.notifier).state = 'File picker error: $e';
     }
   }
 
-  Future<void> _uploadAndExtract(BuildContext context,
-      WidgetRef ref, File file, String name) async {
+  Future<void> _upload(
+      BuildContext context, WidgetRef ref, File file, String name) async {
+    // Reset state
     ref.read(_extractingProvider.notifier).state = true;
     ref.read(_ocrResultsProvider.notifier).state = {};
     ref.read(_errorProvider.notifier).state = null;
@@ -206,7 +210,16 @@ class LabUploadTab extends ConsumerWidget {
     ref.read(_rawTextProvider.notifier).state = '';
 
     try {
-      // Build multipart form
+      // Use your PC's WiFi IP here — same as in api_service.dart
+      const backendUrl = 'http://10.117.123.108:8000';
+
+      final dio = Dio(BaseOptions(
+        baseUrl: backendUrl,
+        connectTimeout: const Duration(seconds: 60),
+        receiveTimeout: const Duration(seconds: 60),
+        sendTimeout: const Duration(seconds: 60),
+      ));
+
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(
           file.path,
@@ -214,45 +227,49 @@ class LabUploadTab extends ConsumerWidget {
         ),
       });
 
-      // Call real FastAPI OCR endpoint
-      final dio = Dio(BaseOptions(
-        baseUrl: 'http://10.0.2.2:8000',
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 30),
-      ));
-
       final response = await dio.post(
         '/ocr/upload',
         data: formData,
         options: Options(
-            contentType: 'multipart/form-data'),
+          contentType: 'multipart/form-data',
+          headers: {'Accept': 'application/json'},
+        ),
+        onSendProgress: (sent, total) {
+          // Could show upload progress here
+        },
       );
 
       final data = response.data as Map<String, dynamic>;
+      final status = data['status'] as String?;
+      final extracted =
+          (data['extracted_values'] as Map<String, dynamic>?) ?? {};
+      final rawText = (data['raw_text'] as String?) ?? '';
 
-// Try both keys — backend returns both
-      final labValues = (data['lab_values'] as Map<String, dynamic>?)
-          ?? (data['extracted_values'] as Map<String, dynamic>?)
-          ?? {};
+      ref.read(_rawTextProvider.notifier).state = rawText;
 
-      final rawText = (data['raw_text_preview'] as String?) ?? '';
-
-      print('OCR status: ${data['status']}');
-      print('Values found: ${data['values_found']}');
-      print('Raw text preview: $rawText');
-
-      if (labValues.isEmpty) {
+      if (status == 'success' && extracted.isNotEmpty) {
+        ref.read(_ocrResultsProvider.notifier).state = extracted;
+      } else if (status == 'no_text') {
         ref.read(_errorProvider.notifier).state =
-        'No lab values found in the uploaded file. Make sure the image is clear and contains lab report data.';
+        'OCR found no text. Tips: Use a well-lit, clear photo. Hold camera steady. Make sure text is horizontal.';
+      } else if (extracted.isEmpty) {
+        ref.read(_errorProvider.notifier).state =
+        'OCR ran but could not recognise any lab values. Raw text preview: "${rawText.substring(0, rawText.length.clamp(0, 100))}"';
+      }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        ref.read(_errorProvider.notifier).state =
+        'Connection timed out. Make sure:\n1. Backend is running (uvicorn --host 0.0.0.0)\n2. Phone and PC are on same WiFi\n3. IP in app matches your PC IP (10.117.123.108)';
+      } else if (e.type == DioExceptionType.connectionError) {
+        ref.read(_errorProvider.notifier).state =
+        'Cannot reach backend. Check:\n1. Backend running on port 8000\n2. PC IP is 10.117.123.108\n3. Same WiFi network';
       } else {
-        ref.read(_ocrResultsProvider.notifier).state =
-            labValues;
-        ref.read(_rawTextProvider.notifier).state =
-            rawText;
+        ref.read(_errorProvider.notifier).state =
+        'Upload error: ${e.message}';
       }
     } catch (e) {
-      ref.read(_errorProvider.notifier).state =
-      'Upload failed: Make sure the backend is running on port 8000. Error: $e';
+      ref.read(_errorProvider.notifier).state = 'Unexpected error: $e';
     }
 
     ref.read(_extractingProvider.notifier).state = false;
@@ -269,22 +286,20 @@ class LabUploadTab extends ConsumerWidget {
             width: 20,
             height: 20,
             child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: AppColors.primary),
+                strokeWidth: 2.5, color: AppColors.primary),
           ),
           const SizedBox(width: 14),
           const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Extracting values...',
+              Text('Uploading and extracting...',
                   style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: AppColors.primaryDark)),
-              Text('OCR is reading your lab report',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.primary)),
+              Text('Tesseract OCR is reading your report',
+                  style:
+                  TextStyle(fontSize: 11, color: AppColors.primary)),
             ],
           ),
         ]),
@@ -292,24 +307,48 @@ class LabUploadTab extends ConsumerWidget {
     );
   }
 
-  Widget _errorCard(String error) {
+  Widget _errorCard(
+      BuildContext context, WidgetRef ref, String error) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: AppCard(
         color: AppColors.dangerLight,
         borderColor: const Color(0xFFF09595),
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.error_rounded,
-                color: AppColors.danger, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(error,
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFA32D2D),
-                      height: 1.5)),
+            Row(children: const [
+              Icon(Icons.error_rounded, color: AppColors.danger, size: 18),
+              SizedBox(width: 8),
+              Text('Upload failed',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFA32D2D))),
+            ]),
+            const SizedBox(height: 6),
+            Text(error,
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFA32D2D),
+                    height: 1.5)),
+            const SizedBox(height: 10),
+            // Retry button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () {
+                  ref.read(_errorProvider.notifier).state = null;
+                  ref.read(_fileNameProvider.notifier).state = null;
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.danger,
+                  side: const BorderSide(color: AppColors.danger),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Try again'),
+              ),
             ),
           ],
         ),
@@ -327,6 +366,7 @@ class LabUploadTab extends ConsumerWidget {
         padding: EdgeInsets.zero,
         child: Column(
           children: [
+            // Header
             Container(
               padding: const EdgeInsets.symmetric(
                   horizontal: 14, vertical: 12),
@@ -337,38 +377,32 @@ class LabUploadTab extends ConsumerWidget {
                     topRight: Radius.circular(14)),
               ),
               child: Row(
-                mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                    children: [
-                      const Text('OCR extracted results',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary)),
-                      Text(
-                          '${entries.length} values found',
-                          style: const TextStyle(
-                              fontSize: 10,
-                              color: AppColors.textHint)),
-                    ],
-                  ),
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('OCR extracted values',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary)),
+                    Text('${entries.length} values found',
+                        style: const TextStyle(
+                            fontSize: 10, color: AppColors.textHint)),
+                  ]),
                   const StatusBadge(
-                      label: 'Extracted',
-                      type: BadgeType.normal),
+                      label: 'Extracted', type: BadgeType.normal),
                 ],
               ),
             ),
+            // Result rows
             ...entries.asMap().entries.map((e) {
               final isLast = e.key == entries.length - 1;
               final key = e.value.key;
               final val = e.value.value;
-              final displayVal = val is double
-                  ? val.toStringAsFixed(1)
-                  : val.toString();
+              final displayKey = key[0].toUpperCase() +
+                  key.substring(1).replaceAll('_', ' ');
+              final displayVal =
+              val is double ? val.toStringAsFixed(1) : val.toString();
 
               return Container(
                 padding: const EdgeInsets.symmetric(
@@ -378,20 +412,15 @@ class LabUploadTab extends ConsumerWidget {
                       ? null
                       : Border(
                       bottom: BorderSide(
-                          color: AppColors.border,
-                          width: 0.5)),
+                          color: AppColors.border, width: 0.5)),
                 ),
                 child: Row(
-                  mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      key[0].toUpperCase() +
-                          key.substring(1).replaceAll('_', ' '),
-                      style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textPrimary),
-                    ),
+                    Text(displayKey,
+                        style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary)),
                     Text(displayVal,
                         style: const TextStyle(
                             fontSize: 13,
@@ -401,16 +430,31 @@ class LabUploadTab extends ConsumerWidget {
                 ),
               );
             }),
+            // Save button
             Padding(
               padding: const EdgeInsets.all(12),
               child: saved
                   ? const StatusBadge(
                   label: '✓ Saved to health record',
                   type: BadgeType.normal)
-                  : AppButton(
-                label: 'Save to health record',
-                onTap: () =>
-                    _save(context, ref, results),
+                  : SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _save(context, ref, results),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.white,
+                    elevation: 0,
+                    padding:
+                    const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Save to health record',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600)),
+                ),
               ),
             ),
           ],
@@ -425,52 +469,51 @@ class LabUploadTab extends ConsumerWidget {
     await apiService.saveLabReport(
       userId: userId,
       values: {
-        'lab_name': 'Uploaded Report',
+        'lab_name': ref.read(_fileNameProvider) ?? 'Uploaded Report',
         'report_date': DateTime.now().toIso8601String(),
         ...results,
       },
     );
     ref.read(_savedProvider.notifier).state = true;
-    if (ref.context.mounted) {
-      ScaffoldMessenger.of(ref.context).showSnackBar(
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Lab report saved to health record'),
-          backgroundColor: AppColors.teal,
-        ),
+            content: Text('Lab report saved to health record'),
+            backgroundColor: AppColors.teal),
       );
     }
   }
 
   Widget _aiTip(Map<String, dynamic> results) {
     final tips = <String>[];
-    final glucose =
-    results['glucose'] as double?;
-    final triglycerides =
-    results['triglycerides'] as double?;
-    final cholesterol =
-    results['cholesterol'] as double?;
-    final hemoglobin =
-    results['hemoglobin'] as double?;
-    final creatinine =
-    results['creatinine'] as double?;
+
+    final glucose = results['glucose'] as double?;
+    final triglycerides = results['triglycerides'] as double?;
+    final cholesterol = results['cholesterol'] as double?;
+    final hemoglobin = results['hemoglobin'] as double?;
+    final creatinine = results['creatinine'] as double?;
+    final sgpt = results['sgpt'] as double?;
 
     if (glucose != null && glucose > 100) {
-      tips.add('Glucose elevated — reduce refined sugar and refined carbs.');
+      tips.add('Glucose elevated at ${glucose.toStringAsFixed(0)} mg/dL — reduce refined sugar and carbs.');
     }
     if (triglycerides != null && triglycerides > 130) {
-      tips.add('Triglycerides borderline — reduce fried food and increase omega-3 foods.');
+      tips.add('Triglycerides borderline — reduce fried food, increase omega-3.');
     }
     if (cholesterol != null && cholesterol > 190) {
-      tips.add('Cholesterol is elevated — add more fibre and reduce saturated fats.');
+      tips.add('Cholesterol elevated — add fibre, reduce saturated fats.');
     }
     if (hemoglobin != null && hemoglobin < 12) {
-      tips.add('Hemoglobin low — increase iron-rich foods like spinach, lentils, and eggs.');
+      tips.add('Hemoglobin low — eat iron-rich foods: spinach, lentils, eggs.');
     }
     if (creatinine != null && creatinine > 1.2) {
-      tips.add('Creatinine slightly high — drink more water and reduce protein excess.');
+      tips.add('Creatinine slightly high — drink more water, reduce protein excess.');
+    }
+    if (sgpt != null && sgpt > 40) {
+      tips.add('SGPT elevated — avoid alcohol and fatty food. Consider liver check.');
     }
     if (tips.isEmpty) {
-      tips.add('All extracted values are within normal range. Keep up your healthy habits!');
+      tips.add('All extracted values look within normal range. Keep up your healthy habits!');
     }
 
     return Padding(
@@ -495,13 +538,11 @@ class LabUploadTab extends ConsumerWidget {
             ...tips.map((t) => Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Row(
-                crossAxisAlignment:
-                CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('• ',
                       style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.primary)),
+                          fontSize: 12, color: AppColors.primary)),
                   Expanded(
                     child: Text(t,
                         style: const TextStyle(
@@ -512,6 +553,42 @@ class LabUploadTab extends ConsumerWidget {
                 ],
               ),
             )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Shows raw OCR text when no values extracted — helps debug bad images
+  Widget _rawTextDebug(String rawText) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+      child: AppCard(
+        color: AppColors.warningLight,
+        borderColor: const Color(0xFFFAC775),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('OCR raw text (debug)',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.warning)),
+            const SizedBox(height: 6),
+            Text(
+              rawText.length > 300
+                  ? '${rawText.substring(0, 300)}...'
+                  : rawText,
+              style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                  fontFamily: 'monospace'),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'If you see text above but no values extracted, the lab report format may not match our patterns. Share the raw text with the developer.',
+              style: TextStyle(fontSize: 10, color: AppColors.textHint),
+            ),
           ],
         ),
       ),
