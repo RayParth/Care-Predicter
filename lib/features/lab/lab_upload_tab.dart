@@ -220,11 +220,11 @@ class LabUploadTab extends ConsumerWidget {
         sendTimeout: const Duration(seconds: 60),
       ));
 
+      final userId = ref.read(backendUserIdProvider) ?? 1;
+
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(
-          file.path,
-          filename: name,
-        ),
+        'file': await MultipartFile.fromFile(file.path, filename: name),
+        'user_id': userId.toString(),  // ADD THIS LINE
       });
 
       final response = await dio.post(

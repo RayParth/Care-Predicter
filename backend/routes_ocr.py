@@ -3,8 +3,9 @@ import io
 import os
 import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse
+from datetime import datetime
 
 router = APIRouter()
 
@@ -206,7 +207,10 @@ def ocr_image(image: Image.Image) -> str:
 
 
 @router.post('/ocr/upload')
-async def upload_lab_report(file: UploadFile = File(...)):
+async def upload_lab_report(
+    file: UploadFile = File(...),
+    user_id: int = Form(default=1)
+):
     filename = file.filename or ''
     ext = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
 
@@ -286,9 +290,52 @@ async def upload_lab_report(file: UploadFile = File(...)):
             'raw_text': all_text[:1000]
         })
 
+    # ── Save ALL extracted values to database ────────────────────────────
+    try:
+        from database import SessionLocal
+        from models import LabReport
+
+        db = SessionLocal()
+        report = LabReport(
+            user_id=user_id,  # FIXED: use actual user_id
+            lab_name=filename,
+            report_date=datetime.now().isoformat(),
+            glucose=extracted.get('glucose'),
+            hemoglobin=extracted.get('hemoglobin'),
+            cholesterol=extracted.get('cholesterol'),
+            triglycerides=extracted.get('triglycerides'),
+            creatinine=extracted.get('creatinine'),
+            uric_acid=extracted.get('uric_acid'),
+            wbc=extracted.get('wbc'),
+            platelets=extracted.get('platelets'),
+            rbc=extracted.get('rbc'),
+            bilirubin=extracted.get('bilirubin'),
+            sgpt=extracted.get('sgpt'),
+            sgot=extracted.get('sgot'),
+            hba1c=extracted.get('hba1c'),
+            tsh=extracted.get('tsh'),
+            vitamin_d=extracted.get('vitamin_d'),
+            vitamin_b12=extracted.get('vitamin_b12'),
+            sodium=extracted.get('sodium'),
+            potassium=extracted.get('potassium'),
+            calcium=extracted.get('calcium'),
+            ldl=extracted.get('ldl'),
+            hdl=extracted.get('hdl'),
+            raw_text=all_text[:2000],
+        )
+        db.add(report)
+        db.commit()
+        db.refresh(report)
+        report_id = report.id
+        db.close()
+    except Exception as e:
+        print(f"DB save error: {e}")
+        report_id = None
+
     return JSONResponse({
         'status': 'success',
         'filename': filename,
+        'report_id': report_id,
         'extracted_values': extracted,
         'values_found': len(extracted),
         'raw_text': all_text[:1000]
