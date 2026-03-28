@@ -202,7 +202,6 @@ class LabUploadTab extends ConsumerWidget {
 
   Future<void> _upload(
       BuildContext context, WidgetRef ref, File file, String name) async {
-    // Reset state
     ref.read(_extractingProvider.notifier).state = true;
     ref.read(_ocrResultsProvider.notifier).state = {};
     ref.read(_errorProvider.notifier).state = null;
@@ -210,8 +209,8 @@ class LabUploadTab extends ConsumerWidget {
     ref.read(_rawTextProvider.notifier).state = '';
 
     try {
-      // Use your PC's WiFi IP here — same as in api_service.dart
       const backendUrl = 'http://10.117.123.108:8000';
+      final userId = ref.read(backendUserIdProvider) ?? 1;
 
       final dio = Dio(BaseOptions(
         baseUrl: backendUrl,
@@ -220,11 +219,9 @@ class LabUploadTab extends ConsumerWidget {
         sendTimeout: const Duration(seconds: 60),
       ));
 
-      final userId = ref.read(backendUserIdProvider) ?? 1;
-
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(file.path, filename: name),
-        'user_id': userId.toString(),  // ADD THIS LINE
+        'user_id': userId.toString(),
       });
 
       final response = await dio.post(
@@ -234,9 +231,6 @@ class LabUploadTab extends ConsumerWidget {
           contentType: 'multipart/form-data',
           headers: {'Accept': 'application/json'},
         ),
-        onSendProgress: (sent, total) {
-          // Could show upload progress here
-        },
       );
 
       final data = response.data as Map<String, dynamic>;
@@ -247,29 +241,28 @@ class LabUploadTab extends ConsumerWidget {
 
       ref.read(_rawTextProvider.notifier).state = rawText;
 
-      if (status == 'success' && extracted.isNotEmpty) {
+      if (extracted.isNotEmpty) {
         ref.read(_ocrResultsProvider.notifier).state = extracted;
+        // Mark as already saved since backend saves during OCR
+        ref.read(_savedProvider.notifier).state = true;
       } else if (status == 'no_text') {
         ref.read(_errorProvider.notifier).state =
-        'OCR found no text. Tips: Use a well-lit, clear photo. Hold camera steady. Make sure text is horizontal.';
-      } else if (extracted.isEmpty) {
+        'OCR found no text. Use a well-lit, clear photo.';
+      } else {
         ref.read(_errorProvider.notifier).state =
-        'OCR ran but could not recognise any lab values. Raw text preview: "${rawText.substring(0, rawText.length.clamp(0, 100))}"';
+        'OCR ran but found no lab values.\n\nRaw text: "${rawText.substring(0, rawText.length.clamp(0, 150))}"';
       }
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout) {
+          e.type == DioExceptionType.connectionError) {
         ref.read(_errorProvider.notifier).state =
-        'Connection timed out. Make sure:\n1. Backend is running (uvicorn --host 0.0.0.0)\n2. Phone and PC are on same WiFi\n3. IP in app matches your PC IP (10.117.123.108)';
-      } else if (e.type == DioExceptionType.connectionError) {
-        ref.read(_errorProvider.notifier).state =
-        'Cannot reach backend. Check:\n1. Backend running on port 8000\n2. PC IP is 10.117.123.108\n3. Same WiFi network';
+        'Cannot reach backend at 172.16.56.108:8000\n\nCheck:\n1. Backend running\n2. Same WiFi\n3. Firewall allows port 8000';
       } else {
         ref.read(_errorProvider.notifier).state =
         'Upload error: ${e.message}';
       }
     } catch (e) {
-      ref.read(_errorProvider.notifier).state = 'Unexpected error: $e';
+      ref.read(_errorProvider.notifier).state = 'Error: $e';
     }
 
     ref.read(_extractingProvider.notifier).state = false;

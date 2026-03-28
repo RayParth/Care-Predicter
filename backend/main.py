@@ -79,3 +79,40 @@ def get_lab_reports(user_id: int, db: Session = Depends(get_db)):
             "hdl": r.hdl,
         })
     return result
+
+@app.get("/labs/{user_id}/latest")
+def get_latest_lab(user_id: int, db: Session = Depends(get_db)):
+    from models import LabReport
+    report = db.query(LabReport).filter(
+        LabReport.user_id == user_id
+    ).order_by(LabReport.uploaded_at.desc()).first()
+
+    if not report:
+        return {"status": "no_data"}
+
+    return {
+        "status": "ok",
+        "id": report.id,
+        "lab_name": report.lab_name,
+        "uploaded_at": report.uploaded_at.isoformat(),
+        "hemoglobin": report.hemoglobin,
+        "rbc": report.rbc,
+        "wbc": report.wbc,
+        "platelets": report.platelets,
+        "glucose": report.glucose,
+        "cholesterol": report.cholesterol,
+        "triglycerides": report.triglycerides,
+        "creatinine": report.creatinine,
+        "uric_acid": report.uric_acid,
+        "bilirubin": report.bilirubin,
+        "sgpt": report.sgpt,
+        "sgot": report.sgot,
+        "hba1c": report.hba1c,
+        "tsh": report.tsh,
+        "vitamin_d": report.vitamin_d,
+        "vitamin_b12": report.vitamin_b12,
+        "sodium": report.sodium,
+        "potassium": report.potassium,
+        "ldl": report.ldl,
+        "hdl": report.hdl,
+    }
