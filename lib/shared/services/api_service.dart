@@ -187,6 +187,17 @@ class ApiService {
       });
       return res.data;
     } catch (e) {
+      print('Save lab error: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getLatestLabReport(int userId) async {
+    try {
+      final res = await _dio.get('/labs/$userId/latest');
+      return res.data;
+    } catch (e) {
+      print('Get lab error: $e');
       return null;
     }
   }

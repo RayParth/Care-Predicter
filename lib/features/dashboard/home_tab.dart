@@ -14,6 +14,16 @@ import '../main_shell.dart';
 import '../alert/alert_screen.dart';
 import '../auth/login_screen.dart';
 
+// Provider to load latest lab report from backend
+final latestLabProvider =
+FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final userId = ref.watch(backendUserIdProvider) ?? 0;
+  if (userId == 0) return {};
+  final result = await apiService.getLatestLabReport(userId);
+  if (result == null || result['status'] == 'no_data') return {};
+  return result;
+});
+
 // Real health data provider
 final healthDataProvider =
 FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -473,6 +483,8 @@ class HomeTab extends ConsumerWidget {
   }
 
   Widget _labSection(BuildContext context, WidgetRef ref) {
+    final labAsync = ref.watch(latestLabProvider);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: AppCard(
@@ -480,7 +492,8 @@ class HomeTab extends ConsumerWidget {
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 10),
               decoration: const BoxDecoration(
                 color: AppColors.surface,
                 borderRadius: BorderRadius.only(
@@ -488,7 +501,8 @@ class HomeTab extends ConsumerWidget {
                     topRight: Radius.circular(14)),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment:
+                MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Latest lab report',
                       style: TextStyle(
@@ -496,19 +510,107 @@ class HomeTab extends ConsumerWidget {
                           fontWeight: FontWeight.w600,
                           color: AppColors.textPrimary)),
                   GestureDetector(
-                    onTap: () =>
-                    ref.read(shellIndexProvider.notifier).state = 3,
+                    onTap: () => ref
+                        .read(shellIndexProvider.notifier)
+                        .state = 3,
                     child: const StatusBadge(
-                        label: 'Upload new →', type: BadgeType.info),
+                        label: 'Upload new →',
+                        type: BadgeType.info),
                   ),
                 ],
               ),
             ),
-            _labRow('Glucose', '94 mg/dL', false),
-            _labRow('Hemoglobin', '13.2 g/dL', false),
-            _labRow('Cholesterol', '178 mg/dL', false),
-            _labRow('Triglycerides', '140 mg/dL', false, isBorderline: true),
-            _labRow('Creatinine', '0.9 mg/dL', true),
+            labAsync.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(
+                    child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                        strokeWidth: 2)),
+              ),
+              error: (_, __) => const Padding(
+                padding: EdgeInsets.all(12),
+                child: Text('Could not load lab data',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary)),
+              ),
+              data: (lab) {
+                if (lab.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(children: [
+                      const Icon(Icons.science_outlined,
+                          color: AppColors.textHint, size: 32),
+                      const SizedBox(height: 8),
+                      const Text('No lab reports yet',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary)),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: () => ref
+                            .read(shellIndexProvider.notifier)
+                            .state = 3,
+                        child: const Text('Upload your first report →',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w500)),
+                      ),
+                    ]),
+                  );
+                }
+
+                // Build rows from real DB data
+                final rows = <Map<String, dynamic>>[];
+                void addRow(String key, String label, String? unit) {
+                  final val = lab[key];
+                  if (val != null && val is num && val > 0) {
+                    rows.add({
+                      'label': label,
+                      'value':
+                      '${val.toStringAsFixed(val % 1 == 0 ? 0 : 1)}${unit != null ? ' $unit' : ''}',
+                    });
+                  }
+                }
+
+                addRow('hemoglobin', 'Hemoglobin', 'g%');
+                addRow('rbc', 'RBC', 'mil/cmm');
+                addRow('wbc', 'WBC', '/cumm');
+                addRow('platelets', 'Platelets', '/cumm');
+                addRow('glucose', 'Glucose', 'mg/dL');
+                addRow('cholesterol', 'Cholesterol', 'mg/dL');
+                addRow('triglycerides', 'Triglycerides', 'mg/dL');
+                addRow('creatinine', 'Creatinine', 'mg/dL');
+                addRow('uric_acid', 'Uric acid', 'mg/dL');
+                addRow('sgpt', 'SGPT', 'U/L');
+                addRow('sgot', 'SGOT', 'U/L');
+                addRow('hba1c', 'HbA1c', '%');
+                addRow('tsh', 'TSH', 'mIU/L');
+                addRow('vitamin_d', 'Vitamin D', 'ng/mL');
+                addRow('vitamin_b12', 'Vitamin B12', 'pg/mL');
+
+                if (rows.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text('No values in latest report',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary)),
+                  );
+                }
+
+                return Column(
+                  children: rows.asMap().entries.map((e) {
+                    final isLast = e.key == rows.length - 1;
+                    final row = e.value;
+                    return _labRow(
+                        row['label'], row['value'], isLast);
+                  }).toList(),
+                );
+              },
+            ),
           ],
         ),
       ),
