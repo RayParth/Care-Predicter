@@ -1,16 +1,16 @@
 import 'package:dio/dio.dart';
+import '../../core/constants/app_config.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.117.123.108:8000';
-
   final Dio _dio = Dio(BaseOptions(
-    baseUrl: baseUrl,
+    baseUrl: AppConfig.baseUrl,
     connectTimeout: const Duration(seconds: 30),
     receiveTimeout: const Duration(seconds: 30),
-    headers: {'Content-Type': 'application/json'},
+    headers: {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true', // required for ngrok free tier
+    },
   ));
-
-  // ── Gmail OAuth register ─────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> registerUser({
     required String email,
@@ -39,8 +39,6 @@ class ApiService {
       return null;
     }
   }
-
-  // ── Email + Password register ────────────────────────────────────────
 
   Future<Map<String, dynamic>?> registerWithEmail({
     required String email,
@@ -72,8 +70,6 @@ class ApiService {
     }
   }
 
-  // ── Email + Password login ───────────────────────────────────────────
-
   Future<Map<String, dynamic>?> loginWithEmail({
     required String email,
     required String password,
@@ -90,8 +86,6 @@ class ApiService {
     }
   }
 
-  // ── Send OTP ─────────────────────────────────────────────────────────
-
   Future<void> sendOtp(String email) async {
     try {
       await _dio.post('/auth/send-otp', data: {'email': email});
@@ -100,8 +94,6 @@ class ApiService {
       throw Exception(msg);
     }
   }
-
-  // ── Verify OTP ───────────────────────────────────────────────────────
 
   Future<bool> verifyOtp(String email, String code) async {
     try {
@@ -116,8 +108,6 @@ class ApiService {
     }
   }
 
-  // ── Get user by email ─────────────────────────────────────────────────
-
   Future<Map<String, dynamic>?> getUserByEmail(String email) async {
     try {
       final res = await _dio.get('/auth/user/$email');
@@ -126,8 +116,6 @@ class ApiService {
       return null;
     }
   }
-
-  // ── Save vitals ───────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> saveVitals({
     required int userId,
@@ -163,8 +151,6 @@ class ApiService {
     }
   }
 
-  // ── Get lab reports history ──────────────────────────────────────────
-
   Future<List<dynamic>> getLabReports(int userId) async {
     try {
       final res = await _dio.get('/labs/$userId');
@@ -173,8 +159,6 @@ class ApiService {
       return [];
     }
   }
-
-  // ── Save lab report ───────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> saveLabReport({
     required int userId,
@@ -201,8 +185,6 @@ class ApiService {
       return null;
     }
   }
-
-  // ── Consultation ──────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> createConsultation({
     required int patientId,
