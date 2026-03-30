@@ -10,6 +10,7 @@ class UserProfile {
   final double height;
   final String bloodGroup;
   final String role;
+  final int backendUserId;
 
   UserProfile({
     required this.name,
@@ -20,6 +21,7 @@ class UserProfile {
     required this.height,
     required this.bloodGroup,
     required this.role,
+    this.backendUserId = 0,
   });
 
   factory UserProfile.empty() => UserProfile(
@@ -31,6 +33,7 @@ class UserProfile {
     height: 0,
     bloodGroup: '',
     role: '',
+    backendUserId: 0,
   );
 
   UserProfile copyWith({
@@ -87,6 +90,7 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
       height: p.getDouble('height') ?? 0,
       bloodGroup: p.getString('bloodGroup') ?? '',
       role: p.getString('role') ?? '',
+      backendUserId: p.getInt('backendUserId') ?? 0,
     );
   }
 
@@ -101,6 +105,7 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
     await p.setDouble('height', profile.height);
     await p.setString('bloodGroup', profile.bloodGroup);
     await p.setString('role', profile.role);
+    await p.setInt('backendUserId', profile.backendUserId);
   }
 
   Future<void> clear() async {
