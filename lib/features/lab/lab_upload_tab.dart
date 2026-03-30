@@ -5,10 +5,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:dio/dio.dart';
+import '../../core/constants/app_config.dart';
 import '../../core/constants/colors.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../shared/services/api_service.dart';
-import '../../shared/widgets/app_button.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/status_badge.dart';
 
@@ -209,7 +209,7 @@ class LabUploadTab extends ConsumerWidget {
     ref.read(_rawTextProvider.notifier).state = '';
 
     try {
-      const backendUrl = 'http://10.117.123.108:8000';
+      final backendUrl = AppConfig.baseUrl;
       final userId = ref.read(backendUserIdProvider) ?? 1;
 
       final dio = Dio(BaseOptions(
@@ -217,6 +217,9 @@ class LabUploadTab extends ConsumerWidget {
         connectTimeout: const Duration(seconds: 60),
         receiveTimeout: const Duration(seconds: 60),
         sendTimeout: const Duration(seconds: 60),
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+        },
       ));
 
       final formData = FormData.fromMap({
