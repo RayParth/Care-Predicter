@@ -58,9 +58,10 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
           height: (userData['height'] as num?)?.toDouble() ?? 0,
           bloodGroup: userData['blood_group'] ?? '',
           role: userData['role'] ?? 'patient',
+          backendUserId: userData['id'] ?? 0,
         );
         await ref.read(userProfileProvider.notifier).save(profile);
-        ref.read(backendUserIdProvider.notifier).state = userData['id'];
+
 
         Navigator.pushAndRemoveUntil(
           context,

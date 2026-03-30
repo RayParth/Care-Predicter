@@ -343,14 +343,114 @@ class OrganMapTab extends ConsumerWidget {
 class HumanBodyPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.blue.shade100;
+    final fill = Paint()
+      ..color = const Color(0xFFE6F1FB)
+      ..style = PaintingStyle.fill;
+    final stroke = Paint()
+      ..color = const Color(0xFF185FA5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final cx = size.width / 2;
 
-    canvas.drawCircle(
-        Offset(size.width / 2, 40), 30, paint);
+    void drawOval(double cx, double cy, double rx, double ry) {
+      final r = Rect.fromCenter(
+          center: Offset(cx, cy), width: rx * 2, height: ry * 2);
+      canvas.drawOval(r, fill);
+      canvas.drawOval(r, stroke);
+    }
+
+    void drawPath(Path p) {
+      canvas.drawPath(p, fill);
+      canvas.drawPath(p, stroke);
+    }
+
+    // Head
+    drawOval(cx, 28, 22, 26);
+    // Neck
+    final neck = RRect.fromRectAndRadius(
+        Rect.fromLTWH(cx - 10, 52, 20, 16),
+        const Radius.circular(4));
+    canvas.drawRRect(neck, fill);
+    canvas.drawRRect(neck, stroke);
+    // Torso
+    drawPath(Path()
+      ..moveTo(cx - 38, 68)
+      ..quadraticBezierTo(cx - 42, 72, cx - 44, 90)
+      ..lineTo(cx - 42, 180)
+      ..quadraticBezierTo(cx - 40, 184, cx - 36, 184)
+      ..lineTo(cx + 36, 184)
+      ..quadraticBezierTo(cx + 40, 184, cx + 42, 180)
+      ..lineTo(cx + 44, 90)
+      ..quadraticBezierTo(cx + 42, 72, cx + 38, 68)
+      ..close());
+    // Left arm
+    drawPath(Path()
+      ..moveTo(cx - 38, 72)
+      ..quadraticBezierTo(cx - 52, 80, cx - 56, 102)
+      ..lineTo(cx - 54, 160)
+      ..quadraticBezierTo(cx - 52, 166, cx - 46, 166)
+      ..lineTo(cx - 40, 166)
+      ..quadraticBezierTo(cx - 36, 164, cx - 36, 158)
+      ..lineTo(cx - 38, 110)
+      ..close());
+    // Right arm
+    drawPath(Path()
+      ..moveTo(cx + 38, 72)
+      ..quadraticBezierTo(cx + 52, 80, cx + 56, 102)
+      ..lineTo(cx + 54, 160)
+      ..quadraticBezierTo(cx + 52, 166, cx + 46, 166)
+      ..lineTo(cx + 40, 166)
+      ..quadraticBezierTo(cx + 36, 164, cx + 36, 158)
+      ..lineTo(cx + 38, 110)
+      ..close());
+    // Left leg
+    drawPath(Path()
+      ..moveTo(cx - 36, 184)
+      ..lineTo(cx - 38, 270)
+      ..quadraticBezierTo(cx - 38, 278, cx - 30, 278)
+      ..lineTo(cx - 18, 278)
+      ..quadraticBezierTo(cx - 12, 278, cx - 12, 270)
+      ..lineTo(cx - 10, 184)
+      ..close());
+    // Right leg
+    drawPath(Path()
+      ..moveTo(cx + 36, 184)
+      ..lineTo(cx + 38, 270)
+      ..quadraticBezierTo(cx + 38, 278, cx + 30, 278)
+      ..lineTo(cx + 18, 278)
+      ..quadraticBezierTo(cx + 12, 278, cx + 12, 270)
+      ..lineTo(cx + 10, 184)
+      ..close());
+    // Feet
+    drawOval(cx - 24, 284, 13, 7);
+    drawOval(cx + 24, 284, 13, 7);
+
+    // Pulse lines on arms
+    final pulse = Paint()
+      ..color = const Color(0xFFE24B4A)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(
+        Path()
+          ..moveTo(cx - 54, 125)
+          ..lineTo(cx - 50, 125)
+          ..lineTo(cx - 48, 117)
+          ..lineTo(cx - 45, 133)
+          ..lineTo(cx - 42, 125)
+          ..lineTo(cx - 38, 125),
+        pulse);
+    canvas.drawPath(
+        Path()
+          ..moveTo(cx + 38, 125)
+          ..lineTo(cx + 42, 125)
+          ..lineTo(cx + 44, 117)
+          ..lineTo(cx + 47, 133)
+          ..lineTo(cx + 50, 125)
+          ..lineTo(cx + 54, 125),
+        pulse);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) =>
-      false;
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }

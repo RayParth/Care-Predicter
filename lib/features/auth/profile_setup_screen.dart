@@ -77,11 +77,25 @@ class _ProfileSetupScreenState
       email: profile.email,
       name: profile.name,
       role: profile.role,
+      gender: profile.gender,
+      age: profile.age,
+      weight: profile.weight,
+      height: profile.height,
+      bloodGroup: profile.bloodGroup,
     );
-    if (result != null) {
-      ref.read(backendUserIdProvider.notifier).state = result['id'];
-    }
-
+    final backendId = result?['id'] ?? 0;
+    final profileWithId = UserProfile(
+      name: profile.name,
+      email: profile.email,
+      gender: profile.gender,
+      age: profile.age,
+      weight: profile.weight,
+      height: profile.height,
+      bloodGroup: profile.bloodGroup,
+      role: profile.role,
+      backendUserId: backendId,
+    );
+    await ref.read(userProfileProvider.notifier).save(profileWithId);
     if (mounted) {
       Navigator.pushReplacement(
         context,
