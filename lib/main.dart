@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'core/constants/colors.dart';
+import 'core/constants/app_colors.dart';
 import 'features/auth/login_screen.dart';
 import 'features/doctor/doctor_shell.dart';
 import 'features/main_shell.dart';
@@ -15,8 +15,9 @@ void main() async {
   final name = prefs.getString('name') ?? '';
   final role = prefs.getString('role') ?? '';
   final email = prefs.getString('email') ?? '';
-  final isLoggedIn =
-      name.isNotEmpty && role.isNotEmpty && email.isNotEmpty;
+  final hasToken = prefs.getString('auth_token') != null;
+  final isLoggedIn = name.isNotEmpty && role.isNotEmpty
+      && email.isNotEmpty && hasToken;
 
   runApp(ProviderScope(
     child: CarePredicterApp(

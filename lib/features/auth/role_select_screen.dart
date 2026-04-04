@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/colors.dart';
+import '../../core/constants/app_colors.dart';
 import 'profile_setup_screen.dart';
 
 class RoleSelectScreen extends StatelessWidget {

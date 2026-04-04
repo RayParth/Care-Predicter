@@ -1,6 +1,6 @@
 
 import 'package:flutter/material.dart';
-import '../../core/constants/colors.dart';
+import '../../core/constants/app_colors.dart';
 
 class OrganDetailScreen extends StatelessWidget {
   final Map<String, dynamic> organ;

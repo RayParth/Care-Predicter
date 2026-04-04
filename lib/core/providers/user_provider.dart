@@ -45,6 +45,7 @@ class UserProfile {
     double? height,
     String? bloodGroup,
     String? role,
+    int? backendUserId,
   }) {
     return UserProfile(
       name: name ?? this.name,
@@ -55,6 +56,7 @@ class UserProfile {
       height: height ?? this.height,
       bloodGroup: bloodGroup ?? this.bloodGroup,
       role: role ?? this.role,
+      backendUserId: backendUserId ?? this.backendUserId,
     );
   }
 

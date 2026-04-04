@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/constants/colors.dart';
-import '../../shared/services/api_service.dart';
+import '../../core/constants/app_colors.dart';
+import '../../shared/services/auth_service.dart';
 import 'otp_screen.dart';
 
 class EmailRegisterScreen extends ConsumerStatefulWidget {
@@ -48,7 +48,7 @@ class _EmailRegisterScreenState extends ConsumerState<EmailRegisterScreen> {
 
     try {
       // Register in backend
-      await apiService.registerWithEmail(
+      await AuthService.registerWithEmail(
         email: _emailCtrl.text.trim(),
         name: _nameCtrl.text.trim(),
         password: _passCtrl.text.trim(),
@@ -61,7 +61,7 @@ class _EmailRegisterScreenState extends ConsumerState<EmailRegisterScreen> {
       );
 
       // Send OTP
-      await apiService.sendOtp(_emailCtrl.text.trim());
+      await AuthService.sendOtp(_emailCtrl.text.trim());
 
       if (mounted) {
         Navigator.pushReplacement(

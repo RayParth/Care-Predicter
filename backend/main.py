@@ -1,22 +1,26 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from database import engine, Base, get_db
-from routes_auth import router as auth_router
-from routes_vitals import router as vitals_router
-from routes_ocr import router as ocr_router
-from routes_consult import router as consult_router
 from sqlalchemy.orm import Session
+from database import engine, Base, get_db
+from models import LabReport
+from config import settings
 
-# Create all database tables
+# Import from the new routes folder
+from routes.auth import router as auth_router
+from routes.vitals import router as vitals_router
+from routes.ocr import router as ocr_router
+from routes.consult import router as consult_router
+
+# Create all database tables on startup
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Care Predicter API",
-    description="AI-Driven Health Monitoring Backend",
-    version="1.0.0"
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    docs_url=None if settings.ENV == "production" else "/docs",
+    redoc_url=None if settings.ENV == "production" else "/redoc",
 )
 
-# Allow Flutter app to connect
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,28 +29,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include all routes
 app.include_router(auth_router)
 app.include_router(vitals_router)
 app.include_router(ocr_router)
 app.include_router(consult_router)
 
+
 @app.get("/")
 def root():
     return {
-        "status": "Care Predicter API running",
-        "version": "1.0.0",
+        "status": f"{settings.APP_NAME} running",
+        "version": settings.APP_VERSION,
         "endpoints": ["/auth", "/vitals", "/ocr", "/consult"]
     }
+
 
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
 
 
+# Lab report endpoints (kept in main.py as they don't have their own router yet)
 @app.get("/labs/{user_id}")
 def get_lab_reports(user_id: int, db: Session = Depends(get_db)):
-    from models import LabReport
     reports = db.query(LabReport).filter(
         LabReport.user_id == user_id
     ).order_by(LabReport.uploaded_at.desc()).all()
@@ -57,15 +62,15 @@ def get_lab_reports(user_id: int, db: Session = Depends(get_db)):
             "id": r.id,
             "lab_name": r.lab_name,
             "uploaded_at": r.uploaded_at.isoformat(),
-            "glucose": r.glucose,
             "hemoglobin": r.hemoglobin,
+            "rbc": r.rbc,
+            "wbc": r.wbc,
+            "platelets": r.platelets,
+            "glucose": r.glucose,
             "cholesterol": r.cholesterol,
             "triglycerides": r.triglycerides,
             "creatinine": r.creatinine,
             "uric_acid": r.uric_acid,
-            "wbc": r.wbc,
-            "platelets": r.platelets,
-            "rbc": r.rbc,
             "bilirubin": r.bilirubin,
             "sgpt": r.sgpt,
             "sgot": r.sgot,
@@ -81,9 +86,9 @@ def get_lab_reports(user_id: int, db: Session = Depends(get_db)):
         })
     return result
 
+
 @app.get("/labs/{user_id}/latest")
 def get_latest_lab(user_id: int, db: Session = Depends(get_db)):
-    from models import LabReport
     report = db.query(LabReport).filter(
         LabReport.user_id == user_id
     ).order_by(LabReport.uploaded_at.desc()).first()

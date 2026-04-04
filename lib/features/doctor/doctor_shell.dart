@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/constants/colors.dart';
+import '../../core/constants/app_colors.dart';
 import 'doctor_dashboard_tab.dart';
 import 'doctor_patients_tab.dart';
 import 'doctor_alerts_tab.dart';
