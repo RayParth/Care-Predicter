@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import '../../core/constants/colors.dart';
-import '../../core/providers/auth_provider.dart';
+import '../../core/constants/app_colors.dart';
 import '../../core/providers/user_provider.dart';
-import '../../shared/services/api_service.dart';
+import '../../shared/services/auth_service.dart';
 import '../main_shell.dart';
 import '../doctor/doctor_shell.dart';
 import 'role_select_screen.dart';
@@ -78,10 +77,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final userData = await apiService.loginWithEmail(
-        email: email,
-        password: password,
-      );
+      final data = await AuthService.loginWithEmail(email: email, password: password);
+      final userData = data['user'];
+      if (userData == null) {
+        throw Exception(data['message'] ?? 'Invalid OTP');
+      }
 
       if (userData != null && mounted) {
         // Save to local prefs

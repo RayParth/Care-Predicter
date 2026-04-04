@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../core/constants/colors.dart';
+import '../core/constants/app_colors.dart';
 import 'dashboard/home_tab.dart';
 import 'organ_map/organ_map_tab.dart';
 import 'chat/ai_chat_tab.dart';

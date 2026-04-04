@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import '../../core/constants/colors.dart';
+import '../../core/constants/app_colors.dart';
 import '../../core/providers/user_provider.dart';
+import '../../shared/services/auth_service.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/status_badge.dart';
 import '../auth/login_screen.dart';
@@ -67,6 +68,7 @@ class DoctorDashboardTab extends ConsumerWidget {
                 onTap: () async {
                   await GoogleSignIn().signOut();
                   await FirebaseAuth.instance.signOut();
+                  await AuthService.logout();  // this clears JWT token too
                   await ref.read(userProfileProvider.notifier).clear();
                   if (context.mounted) {
                     Navigator.pushAndRemoveUntil(
