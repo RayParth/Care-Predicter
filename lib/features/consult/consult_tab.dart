@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/constants/colors.dart';
+import '../../core/constants/app_colors.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../core/providers/user_provider.dart';
-import '../../shared/services/api_service.dart';
+import '../../shared/services/consult_service.dart';
 import '../../shared/widgets/app_button.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/status_badge.dart';
@@ -289,7 +289,7 @@ class ConsultTab extends ConsumerWidget {
                         final userId =
                             ref.read(backendUserIdProvider) ??
                                 1;
-                        await apiService.createConsultation(
+                        await ConsultService.createConsultation(
                           patientId: userId,
                           doctorName: selected,
                           aiSummary: summary,

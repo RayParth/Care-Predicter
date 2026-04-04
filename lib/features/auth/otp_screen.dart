@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/constants/colors.dart';
+import '../../core/constants/app_colors.dart';
 import '../../core/providers/auth_provider.dart';
 import '../../core/providers/user_provider.dart';
-import '../../shared/services/api_service.dart';
+import '../../shared/services/auth_service.dart';
 import '../main_shell.dart';
 import '../doctor/doctor_shell.dart';
 
@@ -44,10 +44,12 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     setState(() { _loading = true; _error = null; });
 
     try {
-      await apiService.verifyOtp(widget.email, _otp);
+      final data = await AuthService.verifyOtp(widget.email, _otp);
+      final userData = data['user'];
+      if (userData == null) {
+        throw Exception(data['message'] ?? 'Invalid OTP');
+      }
 
-      // Load user from backend
-      final userData = await apiService.getUserByEmail(widget.email);
       if (userData != null && mounted) {
         final profile = UserProfile(
           name: userData['name'] ?? '',
@@ -82,7 +84,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
   Future<void> _resend() async {
     setState(() => _resending = true);
     try {
-      await apiService.sendOtp(widget.email);
+      await AuthService.sendOtp(widget.email);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('OTP resent to your email')),
@@ -176,9 +178,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                       } else if (v.isEmpty && i > 0) {
                         _nodes[i - 1].requestFocus();
                       }
-                      if (i == 5 && v.isNotEmpty) {
-                        _verify();
-                      }
+
                     },
                   ),
                 )),

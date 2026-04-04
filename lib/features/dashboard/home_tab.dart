@@ -2,24 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import '../../core/constants/colors.dart';
+import '../../core/constants/app_colors.dart';
 import '../../core/providers/user_provider.dart';
 import '../../core/providers/auth_provider.dart';
+import '../../shared/services/auth_service.dart';
 import '../../shared/widgets/metric_card.dart';
 import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/status_badge.dart';
 import '../../shared/services/health_connect.dart';
-import '../../shared/services/api_service.dart';
 import '../main_shell.dart';
 import '../alert/alert_screen.dart';
 import '../auth/login_screen.dart';
+import '../../shared/services/vitals_service.dart';
+import '../../shared/services/lab_service.dart';
 
 // Provider to load latest lab report from backend
 final latestLabProvider =
 FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final userId = ref.watch(backendUserIdProvider) ?? 0;
   if (userId == 0) return {};
-  final result = await apiService.getLatestLabReport(userId);
+  final result = await LabService.getLatestLabReport(userId);
   if (result == null || result['status'] == 'no_data') return {};
   return result;
 });
@@ -140,7 +142,7 @@ class HomeTab extends ConsumerWidget {
       final hr = (data['heartRate'] as double?) ?? 0;
       final spo2 = (data['spo2'] as double?) ?? 0;
       if (hr == 0 && spo2 == 0) return;
-      await apiService.saveVitals(
+      await VitalsService.saveVitals(
         userId: userId,
         heartRate: hr,
         spo2: spo2,
@@ -199,6 +201,7 @@ class HomeTab extends ConsumerWidget {
                 onTap: () async {
                   await GoogleSignIn().signOut();
                   await FirebaseAuth.instance.signOut();
+                  await AuthService.logout();  // this clears JWT token too
                   await ref.read(userProfileProvider.notifier).clear();
                   if (context.mounted) {
                     Navigator.pushAndRemoveUntil(

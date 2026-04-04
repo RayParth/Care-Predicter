@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../core/constants/colors.dart';
+import '../../core/constants/app_colors.dart';
 import '../../core/providers/user_provider.dart';
-import '../../core/providers/auth_provider.dart';
+import '../../shared/services/auth_service.dart';
 import '../../shared/widgets/app_button.dart';
 import '../../shared/widgets/app_text_field.dart';
-import '../../shared/services/api_service.dart';
 import '../doctor/doctor_shell.dart';
 import '../main_shell.dart';
 
@@ -20,22 +19,19 @@ class ProfileSetupScreen extends ConsumerStatefulWidget {
       _ProfileSetupScreenState();
 }
 
-class _ProfileSetupScreenState
-    extends ConsumerState<ProfileSetupScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  final _ageCtrl = TextEditingController();
+class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
+  final _formKey    = GlobalKey<FormState>();
+  final _nameCtrl   = TextEditingController();
+  final _ageCtrl    = TextEditingController();
   final _weightCtrl = TextEditingController();
   final _heightCtrl = TextEditingController();
 
-  String _gender = 'Female';
+  String _gender     = 'Female';
   String _bloodGroup = 'B+';
-  bool _saving = false;
+  bool   _saving     = false;
 
-  final _genders = ['Male', 'Female', 'Other'];
-  final _bloodGroups = [
-    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'
-  ];
+  final _genders     = ['Male', 'Female', 'Other'];
+  final _bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
   @override
   void initState() {
@@ -59,48 +55,46 @@ class _ProfileSetupScreenState
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
 
-    final user = FirebaseAuth.instance.currentUser;
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+
     final profile = UserProfile(
-      name: _nameCtrl.text.trim(),
-      email: user?.email ?? '',
-      gender: _gender,
-      age: int.tryParse(_ageCtrl.text) ?? 0,
-      weight: double.tryParse(_weightCtrl.text) ?? 0,
-      height: double.tryParse(_heightCtrl.text) ?? 0,
+      name:       _nameCtrl.text.trim(),
+      email:      firebaseUser?.email ?? '',
+      gender:     _gender,
+      age:        int.tryParse(_ageCtrl.text) ?? 0,
+      weight:     double.tryParse(_weightCtrl.text) ?? 0,
+      height:     double.tryParse(_heightCtrl.text) ?? 0,
       bloodGroup: _bloodGroup,
-      role: widget.role,
+      role:       widget.role,
     );
 
+    // Save locally first
     await ref.read(userProfileProvider.notifier).save(profile);
 
-    final result = await apiService.registerUser(
-      email: profile.email,
-      name: profile.name,
-      role: profile.role,
-      gender: profile.gender,
-      age: profile.age,
-      weight: profile.weight,
-      height: profile.height,
+    // Register in backend — note: registerGoogle is the correct method name
+    final result = await AuthService.registerGoogle(
+      email:      profile.email,
+      name:       profile.name,
+      role:       profile.role,
+      gender:     profile.gender,
+      age:        profile.age,
+      weight:     profile.weight,
+      height:     profile.height,
       bloodGroup: profile.bloodGroup,
     );
+
     final backendId = result?['id'] ?? 0;
-    final profileWithId = UserProfile(
-      name: profile.name,
-      email: profile.email,
-      gender: profile.gender,
-      age: profile.age,
-      weight: profile.weight,
-      height: profile.height,
-      bloodGroup: profile.bloodGroup,
-      role: profile.role,
-      backendUserId: backendId,
+
+    // Save again with backend ID
+    await ref.read(userProfileProvider.notifier).save(
+      profile.copyWith(backendUserId: backendId),
     );
-    await ref.read(userProfileProvider.notifier).save(profileWithId);
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => profile.role == 'doctor'
+          builder: (_) => widget.role == 'doctor'
               ? const DoctorShell()
               : const MainShell(),
         ),
@@ -141,8 +135,7 @@ class _ProfileSetupScreenState
                 const Text(
                     'This helps us personalise your health insights',
                     style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textSecondary)),
+                        fontSize: 14, color: AppColors.textSecondary)),
                 const SizedBox(height: 28),
 
                 AppTextField(
@@ -150,9 +143,8 @@ class _ProfileSetupScreenState
                   hint: 'Enter your full name',
                   controller: _nameCtrl,
                   prefixIcon: Icons.person_outline_rounded,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Name is required'
-                      : null,
+                  validator: (v) =>
+                  v == null || v.isEmpty ? 'Name is required' : null,
                 ),
                 const SizedBox(height: 16),
 
@@ -168,13 +160,9 @@ class _ProfileSetupScreenState
                       ],
                       prefixIcon: Icons.cake_outlined,
                       validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Required';
-                        }
+                        if (v == null || v.isEmpty) return 'Required';
                         final a = int.tryParse(v);
-                        if (a == null || a < 1 || a > 120) {
-                          return 'Invalid';
-                        }
+                        if (a == null || a < 1 || a > 120) return 'Invalid';
                         return null;
                       },
                     ),
@@ -182,8 +170,7 @@ class _ProfileSetupScreenState
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text('Gender',
                             style: TextStyle(
@@ -192,14 +179,12 @@ class _ProfileSetupScreenState
                                 color: AppColors.textPrimary)),
                         const SizedBox(height: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12),
+                          padding:
+                          const EdgeInsets.symmetric(horizontal: 12),
                           decoration: BoxDecoration(
                               color: AppColors.surface,
-                              borderRadius:
-                              BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: AppColors.border)),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.border)),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
                               value: _gender,
@@ -209,11 +194,10 @@ class _ProfileSetupScreenState
                                   color: AppColors.textPrimary),
                               items: _genders
                                   .map((g) => DropdownMenuItem(
-                                  value: g,
-                                  child: Text(g)))
+                                  value: g, child: Text(g)))
                                   .toList(),
-                              onChanged: (v) => setState(
-                                      () => _gender = v!),
+                              onChanged: (v) =>
+                                  setState(() => _gender = v!),
                             ),
                           ),
                         ),
@@ -229,18 +213,12 @@ class _ProfileSetupScreenState
                       label: 'Weight (kg)',
                       hint: 'e.g. 58',
                       controller: _weightCtrl,
-                      keyboardType:
-                      const TextInputType.numberWithOptions(
+                      keyboardType: const TextInputType.numberWithOptions(
                           decimal: true),
-                      prefixIcon:
-                      Icons.monitor_weight_outlined,
+                      prefixIcon: Icons.monitor_weight_outlined,
                       validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Required';
-                        }
-                        if (double.tryParse(v) == null) {
-                          return 'Invalid';
-                        }
+                        if (v == null || v.isEmpty) return 'Required';
+                        if (double.tryParse(v) == null) return 'Invalid';
                         return null;
                       },
                     ),
@@ -254,12 +232,8 @@ class _ProfileSetupScreenState
                       keyboardType: TextInputType.number,
                       prefixIcon: Icons.height_rounded,
                       validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Required';
-                        }
-                        if (double.tryParse(v) == null) {
-                          return 'Invalid';
-                        }
+                        if (v == null || v.isEmpty) return 'Required';
+                        if (double.tryParse(v) == null) return 'Invalid';
                         return null;
                       },
                     ),
@@ -279,17 +253,13 @@ class _ProfileSetupScreenState
                   children: _bloodGroups.map((bg) {
                     final sel = _bloodGroup == bg;
                     return GestureDetector(
-                      onTap: () =>
-                          setState(() => _bloodGroup = bg),
+                      onTap: () => setState(() => _bloodGroup = bg),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
-                          color: sel
-                              ? AppColors.primary
-                              : AppColors.surface,
-                          borderRadius:
-                          BorderRadius.circular(20),
+                          color: sel ? AppColors.primary : AppColors.surface,
+                          borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                               color: sel
                                   ? AppColors.primary

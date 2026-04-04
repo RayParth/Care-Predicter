@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/constants/colors.dart';
+import '../../core/constants/app_colors.dart';
 import '../../core/providers/auth_provider.dart';
-import '../../shared/services/api_service.dart';
+import '../../shared/services/auth_service.dart';
 import 'organ_detail_screen.dart';
 
 final organLabProvider =
 FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final userId = ref.watch(backendUserIdProvider) ?? 0;
   if (userId == 0) return {};
-  final result = await apiService.getLatestLabReport(userId);
+  final result = await AuthService.getLatestLabReport(userId);
   if (result == null || result['status'] == 'no_data') return {};
   return result;
 });
