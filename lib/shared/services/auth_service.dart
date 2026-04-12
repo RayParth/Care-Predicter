@@ -6,15 +6,8 @@ import '../../core/constants/api_endpoints.dart';
 class AuthService {
   AuthService._();
 
-  // ── Google Login (NEW) ────────────────────────────────────────────────────
-  //
-  // Call this immediately after Firebase Google sign-in succeeds.
-  // Do NOT call registerGoogle() first anymore.
-  //
-  // Returns a Map with either:
-  //   { needs_registration: false, access_token: "...", user: {...} }
-  //   { needs_registration: true,  email: "...", name: "..." }
-  //
+  // ── Google Login Check ────────────────────────────────────────────────────
+
   static Future<Map<String, dynamic>> googleLogin({
     required String email,
     required String name,
@@ -22,16 +15,59 @@ class AuthService {
     try {
       final res = await ApiClient.post(
         ApiEndpoints.googleLogin,
-        data: {
-          'email': email,
-          'name':  name,
-          'role':  '',   // empty — backend ignores this for existing users
-          // new users will pick role in RoleSelectScreen
-        },
+        data: {'email': email, 'name': name, 'role': ''},
       );
       return res.data as Map<String, dynamic>;
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Google login failed');
+      throw Exception(e.response?.data['detail'] ?? 'Google login check failed');
+    }
+  }
+
+  // ── Register With Google ──────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>?> registerGoogle({
+    required String email,
+    required String name,
+    required String role,
+    String? gender,
+    int? age,
+    double? weight,
+    double? height,
+    String? bloodGroup,
+    String? password,
+  }) async {
+    try {
+      final res = await ApiClient.post(ApiEndpoints.register, data: {
+        'email': email,
+        'name':  name,
+        'role':  role,
+        if (gender     != null) 'gender':      gender,
+        if (age        != null) 'age':         age,
+        if (weight     != null) 'weight':      weight,
+        if (height     != null) 'height':      height,
+        if (bloodGroup != null) 'blood_group': bloodGroup,
+        if (password   != null && password.isNotEmpty) 'password': password,
+      });
+      return res.data as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ── Set Password ──────────────────────────────────────────────────────────
+
+  static Future<bool> setPassword({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await ApiClient.post(ApiEndpoints.setPassword, data: {
+        'email':    email,
+        'password': password,
+      });
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -77,49 +113,52 @@ class AuthService {
         'email':    email,
         'password': password,
       });
-
-      final data = res.data as Map<String, dynamic>;
-
+      final data  = res.data as Map<String, dynamic>;
       final token = data['access_token'];
-      if (token != null && token is String) {
-        await _saveToken(token);
-      }
-
+      if (token != null && token is String) await _saveToken(token);
       return data;
     } on DioException catch (e) {
       throw Exception(e.response?.data['detail'] ?? 'Login failed');
     }
   }
 
-  // ── Google Full Registration ──────────────────────────────────────────────
+  // ── Forgot Password — Step 1 ──────────────────────────────────────────────
   //
-  // Called from ProfileSetupScreen after a NEW Google user fills their profile.
-  // This saves the full profile (role, age, weight, etc.) to the database.
+  // Sends a password-reset OTP to the user's email.
+  // Throws Exception with the backend error message on failure.
   //
-  static Future<Map<String, dynamic>?> registerGoogle({
+  static Future<void> forgotPassword({required String email}) async {
+    try {
+      await ApiClient.post(
+        ApiEndpoints.forgotPassword,
+        data: {'email': email},
+      );
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['detail'] ?? 'Failed to send reset code');
+    }
+  }
+
+  // ── Reset Password — Step 2 ───────────────────────────────────────────────
+  //
+  // Verifies the OTP and saves the new password.
+  // Throws Exception with the backend error message on failure.
+  //
+  static Future<void> resetPassword({
     required String email,
-    required String name,
-    required String role,
-    String? gender,
-    int? age,
-    double? weight,
-    double? height,
-    String? bloodGroup,
+    required String otp,
+    required String newPassword,
   }) async {
     try {
-      final res = await ApiClient.post(ApiEndpoints.register, data: {
-        'email': email,
-        'name':  name,
-        'role':  role,
-        if (gender     != null) 'gender':      gender,
-        if (age        != null) 'age':         age,
-        if (weight     != null) 'weight':      weight,
-        if (height     != null) 'height':      height,
-        if (bloodGroup != null) 'blood_group': bloodGroup,
-      });
-      return res.data as Map<String, dynamic>;
-    } catch (_) {
-      return null;
+      await ApiClient.post(
+        ApiEndpoints.resetPassword,
+        data: {
+          'email':        email,
+          'otp':          otp,
+          'new_password': newPassword,
+        },
+      );
+    } on DioException catch (e) {
+      throw Exception(e.response?.data['detail'] ?? 'Failed to reset password');
     }
   }
 
@@ -141,36 +180,17 @@ class AuthService {
   static Future<Map<String, dynamic>> verifyOtp(
       String email, String code) async {
     try {
-      final res = await ApiClient.post(ApiEndpoints.verifyOtp, data: {
-        'email': email,
-        'code':  code,
-      });
-
+      final res  = await ApiClient.post(ApiEndpoints.verifyOtp,
+          data: {'email': email, 'code': code});
       final data = res.data as Map<String, dynamic>;
-
       if (data['user'] == null) {
         throw Exception(data['message'] ?? 'Invalid OTP response');
       }
-
       final token = data['access_token'];
-      if (token != null && token is String) {
-        await _saveToken(token);
-      }
-
+      if (token != null && token is String) await _saveToken(token);
       return data;
     } on DioException catch (e) {
       throw Exception(e.response?.data['detail'] ?? 'Invalid OTP');
-    }
-  }
-
-  // ── Get User By Email ─────────────────────────────────────────────────────
-
-  static Future<Map<String, dynamic>?> getUserByEmail(String email) async {
-    try {
-      final res = await ApiClient.get('${ApiEndpoints.userByEmail}/$email');
-      return res.data as Map<String, dynamic>;
-    } catch (_) {
-      return null;
     }
   }
 
@@ -192,7 +212,7 @@ class AuthService {
     await prefs.remove('auth_token');
   }
 
-  // ── Save Token (private) ──────────────────────────────────────────────────
+  // ── Private ───────────────────────────────────────────────────────────────
 
   static Future<void> _saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();

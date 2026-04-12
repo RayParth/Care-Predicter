@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import 'profile_setup_screen.dart';
 
+// This screen is ONLY shown to brand new users after Google sign-in.
+// Returning users (existing DB entry) bypass this entirely and go
+// straight to their dashboard from login_screen.dart.
+//
+// For email registration, this screen is NOT used —
+// email_register_screen.dart has its own role dropdown.
+
 class RoleSelectScreen extends StatelessWidget {
-  // These are null when coming from email registration flow
-  // They are filled when coming from Google login flow (new user)
   final String? googleEmail;
   final String? googleName;
 
@@ -27,6 +32,8 @@ class RoleSelectScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 12),
+
+              // Header
               const Text(
                 'Select your role',
                 style: TextStyle(
@@ -42,7 +49,7 @@ class RoleSelectScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
-              // Patient card
+              // ── Patient card ─────────────────────────────────────────────
               _RoleCard(
                 title:    'Patient / User',
                 subtitle: 'Monitor your own health vitals,\nupload lab reports, chat with AI',
@@ -50,9 +57,10 @@ class RoleSelectScreen extends StatelessWidget {
                 iconColor: AppColors.primary,
                 iconBg:   AppColors.primaryLight,
                 tags: const ['Vitals', 'Lab OCR', 'AI Chat', 'Organ Map', 'Alerts'],
-                tagColor:     AppColors.primaryLight,
-                tagTextColor: AppColors.primaryDark,
+                tagColor:      AppColors.primaryLight,
+                tagTextColor:  AppColors.primaryDark,
                 isHighlighted: true,
+                // Route: Patient → ProfileSetupScreen with role=patient
                 onTap: () => Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -66,7 +74,7 @@ class RoleSelectScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // Doctor card
+              // ── Doctor card ──────────────────────────────────────────────
               _RoleCard(
                 title:    'Doctor',
                 subtitle: 'View patient summaries,\nconsultations, AI-generated reports',
@@ -74,9 +82,10 @@ class RoleSelectScreen extends StatelessWidget {
                 iconColor: AppColors.blue,
                 iconBg:   AppColors.blueLight,
                 tags: const ['Patient queue', 'AI summaries', 'Alerts'],
-                tagColor:     AppColors.blueLight,
-                tagTextColor: AppColors.blue,
+                tagColor:      AppColors.blueLight,
+                tagTextColor:  AppColors.blue,
                 isHighlighted: false,
+                // Route: Doctor → ProfileSetupScreen with role=doctor
                 onTap: () => Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -99,16 +108,16 @@ class RoleSelectScreen extends StatelessWidget {
 // ── Role Card Widget ──────────────────────────────────────────────────────────
 
 class _RoleCard extends StatelessWidget {
-  final String        title;
-  final String        subtitle;
-  final IconData      icon;
-  final Color         iconColor;
-  final Color         iconBg;
-  final List<String>  tags;
-  final Color         tagColor;
-  final Color         tagTextColor;
-  final bool          isHighlighted;
-  final VoidCallback  onTap;
+  final String       title;
+  final String       subtitle;
+  final IconData     icon;
+  final Color        iconColor;
+  final Color        iconBg;
+  final List<String> tags;
+  final Color        tagColor;
+  final Color        tagTextColor;
+  final bool         isHighlighted;
+  final VoidCallback onTap;
 
   const _RoleCard({
     required this.title,
@@ -131,10 +140,14 @@ class _RoleCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: isHighlighted ? AppColors.primaryLight : AppColors.surface,
+          color: isHighlighted
+              ? AppColors.primaryLight
+              : AppColors.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: isHighlighted ? AppColors.primary : AppColors.border,
+              color: isHighlighted
+                  ? AppColors.primary
+                  : AppColors.border,
               width: isHighlighted ? 2 : 1),
         ),
         child: Column(
