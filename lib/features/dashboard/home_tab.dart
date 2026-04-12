@@ -281,7 +281,7 @@ class HomeTab extends ConsumerWidget {
                       decoration: BoxDecoration(
                           color: AppColors.teal.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20)),
-                      child: const Text('Health Connect: Live',
+                      child: const Text('Health Connect: offline',
                           style: TextStyle(
                               fontSize: 10,
                               color: AppColors.tealMid,

@@ -11,8 +11,6 @@ from database import get_db
 from models import User, OtpCode
 from schemas import UserCreate, UserResponse, UserLogin, OtpRequest, OtpVerify
 from config import settings
-
-# Import from security.py — do NOT redefine these here
 from security import hash_password, verify_password, generate_otp, create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -40,11 +38,10 @@ def _send_otp_email(to_email: str, otp: str) -> bool:
 
     msg = MIMEMultipart()
     msg["Subject"] = "Care Predicter — Verification Code"
-    msg["From"] = f"Care Predicter <{settings.SMTP_EMAIL}>"
-    msg["To"] = to_email
+    msg["From"]    = f"Care Predicter <{settings.SMTP_EMAIL}>"
+    msg["To"]      = to_email
     msg.attach(MIMEText(body, "plain"))
 
-    # Try SSL (port 465) first, fall back to TLS (port 587)
     try:
         with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT_SSL, timeout=15) as smtp:
             smtp.login(settings.SMTP_EMAIL, settings.SMTP_PASSWORD)
@@ -75,8 +72,10 @@ def _send_otp_sms(phone: str, otp: str) -> bool:
         from twilio.rest import Client
         client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
         client.messages.create(
-            body=(f"Care Predicter code: {otp}. "
-                  f"Expires in {settings.OTP_EXPIRY_MINUTES} min. Do not share."),
+            body=(
+                f"Care Predicter code: {otp}. "
+                f"Expires in {settings.OTP_EXPIRY_MINUTES} min. Do not share."
+            ),
             from_=settings.TWILIO_FROM_NUMBER,
             to=phone,
         )
@@ -87,15 +86,59 @@ def _send_otp_sms(phone: str, otp: str) -> bool:
         return False
 
 
-# ── Gmail OAuth Registration ──────────────────────────────────────────────────
+# ── Google OAuth — Check or Register ─────────────────────────────────────────
+#
+# THIS IS THE NEW ENDPOINT.
+# Flutter calls this immediately after Firebase Google sign-in succeeds.
+#
+# Logic:
+#   - If email already exists in DB  →  return token + full profile
+#     (user goes straight to dashboard, no registration screens)
+#   - If email does NOT exist in DB  →  return needs_registration: true
+#     (Flutter shows RoleSelectScreen → ProfileSetupScreen)
+#
+@router.post("/google-login")
+def google_login(user: UserCreate, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == user.email).first()
 
+    if existing:
+        # User already in database — just return their data and a token
+        access_token = create_access_token({"sub": existing.email})
+        return {
+            "needs_registration": False,
+            "access_token": access_token,
+            "user": {
+                "id":          existing.id,
+                "email":       existing.email,
+                "name":        existing.name,
+                "role":        existing.role,
+                "gender":      existing.gender,
+                "age":         existing.age,
+                "weight":      existing.weight,
+                "height":      existing.height,
+                "blood_group": existing.blood_group,
+            }
+        }
+    else:
+        # New Google user — Flutter must collect role + profile first
+        return {
+            "needs_registration": True,
+            "email": user.email,
+            "name":  user.name,
+        }
+
+
+# ── Gmail OAuth Full Registration ─────────────────────────────────────────────
+#
+# Called from ProfileSetupScreen after new Google user fills their profile.
+# This saves the full profile to the database.
+#
 @router.post("/register", response_model=UserResponse)
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    """Google OAuth registration — already verified by Firebase."""
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
-        # Update profile fields if they changed
-        for field in ["name", "gender", "age", "weight", "height", "blood_group"]:
+        # Update profile fields if provided
+        for field in ["name", "gender", "age", "weight", "height", "blood_group", "role"]:
             val = getattr(user, field, None)
             if val:
                 setattr(existing, field, val)
@@ -104,15 +147,15 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         return existing
 
     new_user = User(
-        email=user.email,
-        name=user.name,
-        role=user.role,
-        gender=user.gender,
-        age=user.age,
-        weight=user.weight,
-        height=user.height,
-        blood_group=user.blood_group,
-        email_verified=True,  # Gmail OAuth = already verified by Firebase
+        email          = user.email,
+        name           = user.name,
+        role           = user.role,
+        gender         = user.gender,
+        age            = user.age,
+        weight         = user.weight,
+        height         = user.height,
+        blood_group    = user.blood_group,
+        email_verified = True,
     )
     db.add(new_user)
     db.commit()
@@ -124,25 +167,30 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/register-email", response_model=UserResponse)
 def register_with_email(user: UserCreate, db: Session = Depends(get_db)):
-    """Email + password registration. OTP verification required after."""
     if not user.password:
         raise HTTPException(status_code=400, detail="Password is required")
 
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
+        # Check if this email was registered via Google
+        if existing.password_hash is None:
+            raise HTTPException(
+                status_code=400,
+                detail="This email is already registered via Google login. Please use Sign in with Google."
+            )
         raise HTTPException(status_code=400, detail="Email already registered. Please login.")
 
     new_user = User(
-        email=user.email,
-        name=user.name,
-        role=user.role,
-        password_hash=hash_password(user.password),
-        gender=user.gender,
-        age=user.age,
-        weight=user.weight,
-        height=user.height,
-        blood_group=user.blood_group,
-        email_verified=False,
+        email          = user.email,
+        name           = user.name,
+        role           = user.role,
+        password_hash  = hash_password(user.password),
+        gender         = user.gender,
+        age            = user.age,
+        weight         = user.weight,
+        height         = user.height,
+        blood_group    = user.blood_group,
+        email_verified = False,
     )
     db.add(new_user)
     db.commit()
@@ -161,7 +209,7 @@ def login_with_email(credentials: UserLogin, db: Session = Depends(get_db)):
     if not user.password_hash:
         raise HTTPException(
             status_code=400,
-            detail="This account uses Gmail login. Please sign in with Google."
+            detail="This account was created with Google login. Please tap 'Continue with Gmail' instead."
         )
 
     if not verify_password(credentials.password, user.password_hash):
@@ -172,14 +220,14 @@ def login_with_email(credentials: UserLogin, db: Session = Depends(get_db)):
     return {
         "access_token": access_token,
         "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "gender": user.gender,
-            "age": user.age,
-            "weight": user.weight,
-            "height": user.height,
+            "id":          user.id,
+            "email":       user.email,
+            "name":        user.name,
+            "role":        user.role,
+            "gender":      user.gender,
+            "age":         user.age,
+            "weight":      user.weight,
+            "height":      user.height,
             "blood_group": user.blood_group,
         }
     }
@@ -189,41 +237,39 @@ def login_with_email(credentials: UserLogin, db: Session = Depends(get_db)):
 
 @router.post("/send-otp")
 def send_otp_endpoint(request: OtpRequest, db: Session = Depends(get_db)):
-    """Generate OTP, save to DB, send via email."""
-    # Rate limiting — max 5 OTP requests per hour per email
+    # FIXED: original code created one_hour_ago but never used it in the query
     one_hour_ago = datetime.utcnow() - timedelta(hours=1)
     recent_count = db.query(OtpCode).filter(
-        OtpCode.email == request.email,
+        OtpCode.email      == request.email,
+        OtpCode.created_at >= one_hour_ago,   # ← this was the missing filter
     ).count()
 
-    # Simple check: if more than 5 unused OTPs exist, rate limit
     if recent_count >= 5:
         raise HTTPException(
             status_code=429,
             detail="Too many OTP requests. Please wait before requesting again."
         )
 
-    # Delete all old OTPs for this email
+    # Delete all old OTPs for this email before creating a new one
     db.query(OtpCode).filter(OtpCode.email == request.email).delete()
     db.commit()
 
-    otp = generate_otp()
+    otp     = generate_otp()
     expires = datetime.utcnow() + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
 
     otp_record = OtpCode(
-        email=request.email,
-        code=otp,
-        expires_at=expires,
+        email      = request.email,
+        code       = otp,
+        expires_at = expires,
     )
     db.add(otp_record)
     db.commit()
 
-    # Send via email
     sent = _send_otp_email(request.email, otp)
 
     return {
-        "status": "sent",
-        "message": f"OTP sent to {request.email}",
+        "status":    "sent",
+        "message":   f"OTP sent to {request.email}",
         "delivered": sent
     }
 
@@ -234,7 +280,7 @@ def send_otp_endpoint(request: OtpRequest, db: Session = Depends(get_db)):
 def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
     record = db.query(OtpCode).filter(
         OtpCode.email == data.email,
-        OtpCode.used == False,
+        OtpCode.used  == False,
     ).order_by(OtpCode.id.desc()).first()
 
     if not record:
@@ -247,31 +293,33 @@ def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Incorrect OTP.")
 
     record.used = True
-
     db.commit()
 
-    # Mark user as verified
     user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found after OTP verification.")
+
+    # Mark email as verified
+    user.email_verified = True
+    db.commit()
 
     access_token = create_access_token({"sub": user.email})
 
     return {
-        "status": "verified",
+        "status":       "verified",
         "access_token": access_token,
         "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "gender": user.gender,
-            "age": user.age,
-            "weight": user.weight,
-            "height": user.height,
+            "id":          user.id,
+            "email":       user.email,
+            "name":        user.name,
+            "role":        user.role,
+            "gender":      user.gender,
+            "age":         user.age,
+            "weight":      user.weight,
+            "height":      user.height,
             "blood_group": user.blood_group,
         }
     }
-
-
 
 
 # ── Get User by Email ─────────────────────────────────────────────────────────

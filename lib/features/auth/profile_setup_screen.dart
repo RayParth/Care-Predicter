@@ -11,8 +11,18 @@ import '../doctor/doctor_shell.dart';
 import '../main_shell.dart';
 
 class ProfileSetupScreen extends ConsumerStatefulWidget {
-  final String role;
-  const ProfileSetupScreen({super.key, required this.role});
+  final String  role;
+  // These come from Google login for new Google users.
+  // They are null for email-registered users (Firebase is used as fallback).
+  final String? googleEmail;
+  final String? googleName;
+
+  const ProfileSetupScreen({
+    super.key,
+    required this.role,
+    this.googleEmail,
+    this.googleName,
+  });
 
   @override
   ConsumerState<ProfileSetupScreen> createState() =>
@@ -36,9 +46,15 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   @override
   void initState() {
     super.initState();
-    final user = FirebaseAuth.instance.currentUser;
-    if (user?.displayName != null) {
-      _nameCtrl.text = user!.displayName!;
+    // Use Google name if provided (new Google user flow)
+    // Otherwise fall back to Firebase displayName (email flow)
+    if (widget.googleName != null && widget.googleName!.isNotEmpty) {
+      _nameCtrl.text = widget.googleName!;
+    } else {
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      if (firebaseUser?.displayName != null) {
+        _nameCtrl.text = firebaseUser!.displayName!;
+      }
     }
   }
 
@@ -55,11 +71,14 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
 
-    final firebaseUser = FirebaseAuth.instance.currentUser;
+    // Use googleEmail if provided, otherwise get from Firebase
+    final email = widget.googleEmail?.isNotEmpty == true
+        ? widget.googleEmail!
+        : FirebaseAuth.instance.currentUser?.email ?? '';
 
     final profile = UserProfile(
       name:       _nameCtrl.text.trim(),
-      email:      firebaseUser?.email ?? '',
+      email:      email,
       gender:     _gender,
       age:        int.tryParse(_ageCtrl.text) ?? 0,
       weight:     double.tryParse(_weightCtrl.text) ?? 0,
@@ -68,10 +87,11 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       role:       widget.role,
     );
 
-    // Save locally first
+    // Save to local prefs first
     await ref.read(userProfileProvider.notifier).save(profile);
 
-    // Register in backend — note: registerGoogle is the correct method name
+    // Save full profile to backend database
+    // This is the call that actually creates the user row in PostgreSQL
     final result = await AuthService.registerGoogle(
       email:      profile.email,
       name:       profile.name,
@@ -85,7 +105,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
     final backendId = result?['id'] ?? 0;
 
-    // Save again with backend ID
+    // Save again with the backend database ID
     await ref.read(userProfileProvider.notifier).save(
       profile.copyWith(backendUserId: backendId),
     );
@@ -117,8 +137,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 48, height: 48,
                   decoration: BoxDecoration(
                       color: AppColors.primaryLight,
                       borderRadius: BorderRadius.circular(12)),
@@ -126,21 +145,24 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                       color: AppColors.primary, size: 24),
                 ),
                 const SizedBox(height: 16),
-                const Text('Set up your profile',
-                    style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary)),
+                const Text(
+                  'Set up your profile',
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary),
+                ),
                 const SizedBox(height: 6),
                 const Text(
-                    'This helps us personalise your health insights',
-                    style: TextStyle(
-                        fontSize: 14, color: AppColors.textSecondary)),
+                  'This helps us personalise your health insights',
+                  style: TextStyle(
+                      fontSize: 14, color: AppColors.textSecondary),
+                ),
                 const SizedBox(height: 28),
 
                 AppTextField(
                   label: 'Full name',
-                  hint: 'Enter your full name',
+                  hint:  'Enter your full name',
                   controller: _nameCtrl,
                   prefixIcon: Icons.person_outline_rounded,
                   validator: (v) =>
@@ -152,7 +174,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'Age',
-                      hint: 'e.g. 24',
+                      hint:  'e.g. 24',
                       controller: _ageCtrl,
                       keyboardType: TextInputType.number,
                       inputFormatters: [
@@ -179,8 +201,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                                 color: AppColors.textPrimary)),
                         const SizedBox(height: 6),
                         Container(
-                          padding:
-                          const EdgeInsets.symmetric(horizontal: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
                           decoration: BoxDecoration(
                               color: AppColors.surface,
                               borderRadius: BorderRadius.circular(12),
@@ -211,7 +232,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'Weight (kg)',
-                      hint: 'e.g. 58',
+                      hint:  'e.g. 58',
                       controller: _weightCtrl,
                       keyboardType: const TextInputType.numberWithOptions(
                           decimal: true),
@@ -227,7 +248,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                   Expanded(
                     child: AppTextField(
                       label: 'Height (cm)',
-                      hint: 'e.g. 162',
+                      hint:  'e.g. 162',
                       controller: _heightCtrl,
                       keyboardType: TextInputType.number,
                       prefixIcon: Icons.height_rounded,
@@ -258,7 +279,9 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
-                          color: sel ? AppColors.primary : AppColors.surface,
+                          color: sel
+                              ? AppColors.primary
+                              : AppColors.surface,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                               color: sel
@@ -279,10 +302,10 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                 const SizedBox(height: 32),
 
                 AppButton(
-                  label: 'Save and continue',
-                  onTap: _save,
+                  label:     'Save and continue',
+                  onTap:     _save,
                   isLoading: _saving,
-                  icon: Icons.arrow_forward_rounded,
+                  icon:      Icons.arrow_forward_rounded,
                 ),
                 const SizedBox(height: 16),
               ],
