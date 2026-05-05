@@ -2,8 +2,22 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import 'profile_setup_screen.dart';
 
+// This screen is ONLY shown to brand new users after Google sign-in.
+// Returning users (existing DB entry) bypass this entirely and go
+// straight to their dashboard from login_screen.dart.
+//
+// For email registration, this screen is NOT used —
+// email_register_screen.dart has its own role dropdown.
+
 class RoleSelectScreen extends StatelessWidget {
-  const RoleSelectScreen({super.key});
+  final String? googleEmail;
+  final String? googleName;
+
+  const RoleSelectScreen({
+    super.key,
+    this.googleEmail,
+    this.googleName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -13,69 +27,74 @@ class RoleSelectScreen extends StatelessWidget {
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(
-              horizontal: size.width * 0.06,
-              vertical: 24),
+              horizontal: size.width * 0.06, vertical: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 12),
-              const Text('Select your role',
-                  style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary)),
+
+              // Header
+              const Text(
+                'Select your role',
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary),
+              ),
               const SizedBox(height: 8),
               const Text(
-                  'This determines what you see in Care Predicter',
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary)),
+                'This determines what you see in Care Predicter',
+                style: TextStyle(
+                    fontSize: 14, color: AppColors.textSecondary),
+              ),
               const SizedBox(height: 32),
+
+              // ── Patient card ─────────────────────────────────────────────
               _RoleCard(
-                title: 'Patient / User',
-                subtitle:
-                'Monitor your own health vitals,\nupload lab reports, chat with AI',
-                icon: Icons.person_rounded,
+                title:    'Patient / User',
+                subtitle: 'Monitor your own health vitals,\nupload lab reports, chat with AI',
+                icon:     Icons.person_rounded,
                 iconColor: AppColors.primary,
-                iconBg: AppColors.primaryLight,
-                tags: const [
-                  'Vitals',
-                  'Lab OCR',
-                  'AI Chat',
-                  'Organ Map',
-                  'Alerts'
-                ],
-                tagColor: AppColors.primaryLight,
-                tagTextColor: AppColors.primaryDark,
+                iconBg:   AppColors.primaryLight,
+                tags: const ['Vitals', 'Lab OCR', 'AI Chat', 'Organ Map', 'Alerts'],
+                tagColor:      AppColors.primaryLight,
+                tagTextColor:  AppColors.primaryDark,
                 isHighlighted: true,
+                // Route: Patient → ProfileSetupScreen with role=patient
                 onTap: () => Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                      builder: (_) =>
-                      const ProfileSetupScreen(role: 'patient')),
+                    builder: (_) => ProfileSetupScreen(
+                      role:        'patient',
+                      googleEmail: googleEmail,
+                      googleName:  googleName,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
+
+              // ── Doctor card ──────────────────────────────────────────────
               _RoleCard(
-                title: 'Doctor',
-                subtitle:
-                'View patient summaries,\nconsultations, AI-generated reports',
-                icon: Icons.medical_services_rounded,
+                title:    'Doctor',
+                subtitle: 'View patient summaries,\nconsultations, AI-generated reports',
+                icon:     Icons.medical_services_rounded,
                 iconColor: AppColors.blue,
-                iconBg: AppColors.blueLight,
-                tags: const [
-                  'Patient queue',
-                  'AI summaries',
-                  'Alerts'
-                ],
-                tagColor: AppColors.blueLight,
-                tagTextColor: AppColors.blue,
+                iconBg:   AppColors.blueLight,
+                tags: const ['Patient queue', 'AI summaries', 'Alerts'],
+                tagColor:      AppColors.blueLight,
+                tagTextColor:  AppColors.blue,
                 isHighlighted: false,
+                // Route: Doctor → ProfileSetupScreen with role=doctor
                 onTap: () => Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                      builder: (_) =>
-                      const ProfileSetupScreen(role: 'doctor')),
+                    builder: (_) => ProfileSetupScreen(
+                      role:        'doctor',
+                      googleEmail: googleEmail,
+                      googleName:  googleName,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -86,16 +105,18 @@ class RoleSelectScreen extends StatelessWidget {
   }
 }
 
+// ── Role Card Widget ──────────────────────────────────────────────────────────
+
 class _RoleCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color iconColor;
-  final Color iconBg;
+  final String       title;
+  final String       subtitle;
+  final IconData     icon;
+  final Color        iconColor;
+  final Color        iconBg;
   final List<String> tags;
-  final Color tagColor;
-  final Color tagTextColor;
-  final bool isHighlighted;
+  final Color        tagColor;
+  final Color        tagTextColor;
+  final bool         isHighlighted;
   final VoidCallback onTap;
 
   const _RoleCard({
@@ -134,8 +155,7 @@ class _RoleCard extends StatelessWidget {
           children: [
             Row(children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 44, height: 44,
                 decoration: BoxDecoration(
                     color: iconBg, shape: BoxShape.circle),
                 child: Icon(icon, color: iconColor, size: 22),
@@ -179,8 +199,7 @@ class _RoleCard extends StatelessWidget {
                     horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                     color: tagColor,
-                    borderRadius:
-                    BorderRadius.circular(20)),
+                    borderRadius: BorderRadius.circular(20)),
                 child: Text(t,
                     style: TextStyle(
                         fontSize: 11,
