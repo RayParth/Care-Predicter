@@ -20,8 +20,8 @@ class OrganMapTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final labAsync = ref.watch(organLabProvider);
-    final lab = labAsync.value ?? {};
-    final organs = _buildOrgans(lab);
+    final lab      = labAsync.value ?? {};
+    final organs   = _buildOrgans(lab);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -43,91 +43,89 @@ class OrganMapTab extends ConsumerWidget {
     );
   }
 
-  // ─────────────────────────────────────────────
+  // ── Build organ list ──────────────────────────────────────────────────────
+  //
+  // FIXED: 'labData': lab is now passed into every organ map.
+  // OrganDetailScreen reads from organ['labData'] instead of hardcoded values.
+  //
 
-  List<Map<String, dynamic>> _buildOrgans(
-      Map<String, dynamic> lab) {
-    String fmt(String key, String unit,
-        {String fallback = 'No data'}) {
+  List<Map<String, dynamic>> _buildOrgans(Map<String, dynamic> lab) {
+    String fmt(String key, String unit, {String fallback = 'No data'}) {
       final v = lab[key];
       if (v == null || v == 0) return fallback;
-      final n =
-      v is num ? v : double.tryParse(v.toString());
+      final n = v is num ? v : double.tryParse(v.toString());
       if (n == null) return fallback;
       return '${n.toStringAsFixed(n % 1 == 0 ? 0 : 1)} $unit';
     }
 
     return [
       {
-        'id': 'brain',
-        'name': 'Brain',
-        'color': AppColors.primary,
-        'bg': AppColors.primaryLight,
-        'icon': Icons.psychology_rounded,
+        'id':      'brain',
+        'name':    'Brain',
+        'color':   AppColors.primary,
+        'bg':      AppColors.primaryLight,
+        'icon':    Icons.psychology_rounded,
         'summary': 'Sleep & neurological health',
-        'status': 'Check vitals',
+        'status':  lab['sodium'] != null ? 'Real data' : 'No data',
+        'labData': lab,   // ← passes full lab map to OrganDetailScreen
       },
       {
-        'id': 'heart',
-        'name': 'Heart',
-        'color': AppColors.danger,
-        'bg': AppColors.dangerLight,
-        'icon': Icons.favorite_rounded,
-        'summary': fmt('hemoglobin', 'g% Hb'),
-        'status':
-        lab['hemoglobin'] != null ? 'Real data' : 'No data',
+        'id':      'heart',
+        'name':    'Heart',
+        'color':   AppColors.danger,
+        'bg':      AppColors.dangerLight,
+        'icon':    Icons.favorite_rounded,
+        'summary': fmt('cholesterol', 'mg/dL Chol.'),
+        'status':  lab['cholesterol'] != null ? 'Real data' : 'No data',
+        'labData': lab,
       },
       {
-        'id': 'lungs',
-        'name': 'Lungs',
-        'color': AppColors.blue,
-        'bg': AppColors.blueLight,
-        'icon': Icons.air_rounded,
+        'id':      'lungs',
+        'name':    'Lungs',
+        'color':   AppColors.blue,
+        'bg':      AppColors.blueLight,
+        'icon':    Icons.air_rounded,
         'summary': fmt('rbc', 'mil/cmm RBC'),
-        'status':
-        lab['rbc'] != null ? 'Real data' : 'No data',
+        'status':  lab['rbc'] != null ? 'Real data' : 'No data',
+        'labData': lab,
       },
       {
-        'id': 'liver',
-        'name': 'Liver',
-        'color': AppColors.warning,
-        'bg': AppColors.warningLight,
-        'icon': Icons.water_drop_rounded,
+        'id':      'liver',
+        'name':    'Liver',
+        'color':   AppColors.warning,
+        'bg':      AppColors.warningLight,
+        'icon':    Icons.water_drop_rounded,
         'summary': fmt('sgpt', 'U/L SGPT'),
-        'status':
-        lab['sgpt'] != null ? 'Real data' : 'No data',
+        'status':  lab['sgpt'] != null ? 'Real data' : 'No data',
+        'labData': lab,
       },
       {
-        'id': 'stomach',
-        'name': 'Stomach',
-        'color': AppColors.success,
-        'bg': AppColors.successLight,
-        'icon': Icons.circle_rounded,
+        'id':      'stomach',
+        'name':    'Stomach',
+        'color':   AppColors.success,
+        'bg':      AppColors.successLight,
+        'icon':    Icons.circle_rounded,
         'summary': fmt('glucose', 'mg/dL Glucose'),
-        'status':
-        lab['glucose'] != null ? 'Real data' : 'No data',
+        'status':  lab['glucose'] != null ? 'Real data' : 'No data',
+        'labData': lab,
       },
       {
-        'id': 'kidneys',
-        'name': 'Kidneys',
-        'color': const Color(0xFFD4537E),
-        'bg': const Color(0xFFFBEAF0),
-        'icon': Icons.opacity_rounded,
+        'id':      'kidneys',
+        'name':    'Kidneys',
+        'color':   const Color(0xFFD4537E),
+        'bg':      const Color(0xFFFBEAF0),
+        'icon':    Icons.opacity_rounded,
         'summary': fmt('creatinine', 'mg/dL Creat.'),
-        'status': lab['creatinine'] != null
-            ? 'Real data'
-            : 'No data',
+        'status':  lab['creatinine'] != null ? 'Real data' : 'No data',
+        'labData': lab,
       },
     ];
   }
 
-  // ─────────────────────────────────────────────
-
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      padding:
-      const EdgeInsets.fromLTRB(16, 16, 16, 20),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       color: AppColors.primary,
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -138,59 +136,45 @@ class OrganMapTab extends ConsumerWidget {
                   fontWeight: FontWeight.w600,
                   color: AppColors.white)),
           SizedBox(height: 4),
-          Text('Tap any organ to view health data',
+          Text('Tap any organ to view real health data',
               style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.primaryMid)),
+                  fontSize: 12, color: AppColors.primaryMid)),
         ],
       ),
     );
   }
 
-  // ─────────────────────────────────────────────
-
-  Widget _buildHumanBody(BuildContext context,
-      List<Map<String, dynamic>> organs) {
+  Widget _buildHumanBody(
+      BuildContext context, List<Map<String, dynamic>> organs) {
     return Padding(
-      padding:
-      const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
             color: AppColors.white,
             borderRadius: BorderRadius.circular(16),
-            border:
-            Border.all(color: AppColors.border)),
+            border: Border.all(color: AppColors.border)),
         child: Stack(
           alignment: Alignment.center,
           children: [
             SizedBox(
               height: 340,
               width: double.infinity,
-              child: CustomPaint(
-                  painter: HumanBodyPainter()),
+              child: CustomPaint(painter: HumanBodyPainter()),
             ),
             SizedBox(
               height: 340,
               width: 200,
               child: Stack(
                 children: [
-                  _organBtn(context, organs,
-                      'brain', 75, 8, 50, 36),
-                  _organBtn(context, organs,
-                      'heart', 82, 118, 36, 36),
-                  _organBtn(context, organs,
-                      'lungs', 46, 110, 32, 48),
-                  _organBtn(context, organs,
-                      'lungs', 122, 110, 32, 48),
-                  _organBtn(context, organs,
-                      'liver', 108, 162, 38, 28),
-                  _organBtn(context, organs,
-                      'stomach', 70, 158, 34, 26),
-                  _organBtn(context, organs,
-                      'kidneys', 50, 190, 24, 32),
-                  _organBtn(context, organs,
-                      'kidneys', 126, 190, 24, 32),
+                  _organBtn(context, organs, 'brain',   75,  8,  50, 36),
+                  _organBtn(context, organs, 'heart',   82,  118, 36, 36),
+                  _organBtn(context, organs, 'lungs',   46,  110, 32, 48),
+                  _organBtn(context, organs, 'lungs',   122, 110, 32, 48),
+                  _organBtn(context, organs, 'liver',   108, 162, 38, 28),
+                  _organBtn(context, organs, 'stomach', 70,  158, 34, 26),
+                  _organBtn(context, organs, 'kidneys', 50,  190, 24, 32),
+                  _organBtn(context, organs, 'kidneys', 126, 190, 24, 32),
                 ],
               ),
             ),
@@ -200,8 +184,6 @@ class OrganMapTab extends ConsumerWidget {
     );
   }
 
-  // ─────────────────────────────────────────────
-
   Widget _organBtn(
       BuildContext context,
       List<Map<String, dynamic>> organs,
@@ -209,32 +191,28 @@ class OrganMapTab extends ConsumerWidget {
       double l,
       double t,
       double w,
-      double h) {
-    final organ =
-    organs.firstWhere((o) => o['id'] == id);
+      double h,
+      ) {
+    final organ = organs.firstWhere((o) => o['id'] == id);
 
     return Positioned(
       left: l,
-      top: t,
+      top:  t,
       child: GestureDetector(
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                OrganDetailScreen(organ: organ),
+            builder: (_) => OrganDetailScreen(organ: organ),
           ),
         ),
         child: Container(
           width: w,
           height: h,
           decoration: BoxDecoration(
-            color: (organ['bg'] as Color)
-                .withOpacity(0.85),
-            borderRadius:
-            BorderRadius.circular(8),
+            color: (organ['bg'] as Color).withOpacity(0.85),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(
-                color: organ['color'] as Color,
-                width: 1.5),
+                color: organ['color'] as Color, width: 1.5),
           ),
           child: Center(
             child: Text(
@@ -242,8 +220,7 @@ class OrganMapTab extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 8,
                 fontWeight: FontWeight.w600,
-                color:
-                organ['color'] as Color,
+                color: organ['color'] as Color,
               ),
               textAlign: TextAlign.center,
             ),
@@ -253,16 +230,12 @@ class OrganMapTab extends ConsumerWidget {
     );
   }
 
-  // ─────────────────────────────────────────────
-
-  Widget _buildOrganList(BuildContext context,
-      List<Map<String, dynamic>> organs) {
+  Widget _buildOrganList(
+      BuildContext context, List<Map<String, dynamic>> organs) {
     return Padding(
-      padding:
-      const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Organ status summary',
               style: TextStyle(
@@ -273,60 +246,75 @@ class OrganMapTab extends ConsumerWidget {
           Container(
             decoration: BoxDecoration(
                 color: AppColors.white,
-                borderRadius:
-                BorderRadius.circular(14),
-                border:
-                Border.all(color: AppColors.border)),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border)),
             child: Column(
-              children:
-              organs.asMap().entries.map((e) {
-                final isLast =
-                    e.key == organs.length - 1;
-                final organ = e.value;
+              children: organs.asMap().entries.map((e) {
+                final isLast = e.key == organs.length - 1;
+                final organ  = e.value;
+                final hasData = organ['status'] == 'Real data';
 
                 return GestureDetector(
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) =>
-                          OrganDetailScreen(
-                              organ: organ),
+                          OrganDetailScreen(organ: organ),
                     ),
                   ),
                   child: Container(
-                    padding:
-                    const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
                       border: isLast
                           ? null
                           : Border(
-                        bottom: BorderSide(
-                            color:
-                            AppColors.border,
-                            width: 0.5),
-                      ),
+                          bottom: BorderSide(
+                              color: AppColors.border,
+                              width: 0.5)),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(organ['icon'],
-                            color: organ['color']),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                            CrossAxisAlignment
-                                .start,
-                            children: [
-                              Text(organ['name']),
-                              Text(organ['summary']),
-                            ],
-                          ),
+                    child: Row(children: [
+                      Icon(organ['icon'],
+                          color: organ['color'] as Color),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                          children: [
+                            Text(organ['name'],
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.textPrimary)),
+                            Text(organ['summary'],
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                          ],
                         ),
-                        Text('${organ['status']}'),
-                      ],
-                    ),
+                      ),
+                      // Status badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: hasData
+                              ? AppColors.successLight
+                              : AppColors.surface,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          organ['status'],
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: hasData
+                                  ? AppColors.success
+                                  : AppColors.textHint,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ]),
                   ),
                 );
               }).toList(),
@@ -338,7 +326,7 @@ class OrganMapTab extends ConsumerWidget {
   }
 }
 
-// ─────────────────────────────────────────────
+// ── Human Body Painter ────────────────────────────────────────────────────────
 
 class HumanBodyPainter extends CustomPainter {
   @override
@@ -368,8 +356,7 @@ class HumanBodyPainter extends CustomPainter {
     drawOval(cx, 28, 22, 26);
     // Neck
     final neck = RRect.fromRectAndRadius(
-        Rect.fromLTWH(cx - 10, 52, 20, 16),
-        const Radius.circular(4));
+        Rect.fromLTWH(cx - 10, 52, 20, 16), const Radius.circular(4));
     canvas.drawRRect(neck, fill);
     canvas.drawRRect(neck, stroke);
     // Torso
