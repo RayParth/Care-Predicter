@@ -9,8 +9,8 @@ import '../../shared/services/auth_service.dart';
 import '../main_shell.dart';
 import '../doctor/doctor_shell.dart';
 import 'role_select_screen.dart';
-import 'otp_screen.dart';
 import 'email_register_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -20,11 +20,11 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  bool _isLoading    = false;
-  bool _showEmailLogin = false;
-  final _emailCtrl   = TextEditingController();
-  final _passCtrl    = TextEditingController();
-  bool _obscure      = true;
+  bool   _isLoading      = false;
+  bool   _showEmailLogin = false;
+  final  _emailCtrl      = TextEditingController();
+  final  _passCtrl       = TextEditingController();
+  bool   _obscure        = true;
 
   @override
   void dispose() {
@@ -34,17 +34,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   // ── Google Sign In ────────────────────────────────────────────────────────
-  //
-  // FIXED FLOW:
-  // 1. Firebase auth
-  // 2. Call backend /auth/google-login with the email
-  // 3. If needs_registration = false  → user exists → load profile → dashboard
-  // 4. If needs_registration = true   → new user → RoleSelectScreen
-  //
+
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
     try {
-      // Step 1: Firebase
       final googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
         setState(() => _isLoading = false);
@@ -58,17 +51,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final firebaseResult =
       await FirebaseAuth.instance.signInWithCredential(credential);
 
-      final email = firebaseResult.user?.email         ?? '';
-      final name  = firebaseResult.user?.displayName   ?? '';
+      final email = firebaseResult.user?.email       ?? '';
+      final name  = firebaseResult.user?.displayName ?? '';
 
-      if (email.isEmpty) {
-        throw Exception('Could not get email from Google account');
-      }
+      if (email.isEmpty) throw Exception('Could not get email from Google account');
 
-      // Step 2: Check backend
       final backendResult = await AuthService.googleLogin(
-        email: email,
-        name:  name,
+        email: email, name: name,
       );
 
       if (!mounted) return;
@@ -76,9 +65,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final needsRegistration = backendResult['needs_registration'] as bool;
 
       if (!needsRegistration) {
-        // ── EXISTING USER ──────────────────────────────────────────────────
-        // Their profile is already in the database.
-        // Save token + profile locally → go straight to dashboard.
+        // Existing user — load profile → dashboard
         final userData = backendResult['user'] as Map<String, dynamic>;
         final token    = backendResult['access_token'] as String?;
 
@@ -110,12 +97,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
               (_) => false,
         );
-
       } else {
-        // ── NEW USER ───────────────────────────────────────────────────────
-        // They have never registered before.
-        // Send to role selection. Pass email + name so they don't need to
-        // type them again in ProfileSetupScreen.
+        // New user — role + profile setup
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
@@ -127,7 +110,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         );
       }
-
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -156,10 +138,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final data     = await AuthService.loginWithEmail(email: email, password: password);
       final userData = data['user'];
-
-      if (userData == null) {
-        throw Exception(data['message'] ?? 'Login failed');
-      }
+      if (userData == null) throw Exception(data['message'] ?? 'Login failed');
 
       final profile = UserProfile(
         name:          userData['name']        ?? '',
@@ -196,6 +175,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
+  // ── Forgot Password ───────────────────────────────────────────────────────
+  //
+  // Opens ForgotPasswordScreen.
+  // If it returns a success string, show it as a SnackBar and switch
+  // back to the login form so the user can login with their new password.
+  //
+  Future<void> _openForgotPassword() async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => const ForgotPasswordScreen()),
+    );
+
+    // result is non-null only on successful password reset
+    if (result != null && mounted) {
+      setState(() => _showEmailLogin = true);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result),
+        backgroundColor: AppColors.teal,
+        duration: const Duration(seconds: 4),
+      ));
+    }
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -203,8 +206,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final size = MediaQuery.of(context).size;
     return Scaffold(
       backgroundColor: AppColors.white,
-      // resizeToAvoidBottomInset: true keeps the screen from overflowing
-      // when the keyboard opens — fixes the overflow bug in screenshot
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: SingleChildScrollView(
@@ -239,38 +240,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const SizedBox(height: 20),
 
-              const Text(
-                'Care Predicter',
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -0.5),
-              ),
+              const Text('Care Predicter',
+                  style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.5)),
               const SizedBox(height: 6),
-              const Text(
-                'Monitor · Analyse · Stay healthy',
-                style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-              ),
+              const Text('Monitor · Analyse · Stay healthy',
+                  style: TextStyle(
+                      fontSize: 14, color: AppColors.textSecondary)),
               const SizedBox(height: 32),
 
               if (!_showEmailLogin) ...[
                 // Feature pills
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 8, runSpacing: 8,
                   alignment: WrapAlignment.center,
                   children: const [
-                    _Pill('Health tracking'),
-                    _Pill('Lab OCR'),
-                    _Pill('AI chat'),
-                    _Pill('Organ map'),
+                    _Pill('Health tracking'), _Pill('Lab OCR'),
+                    _Pill('AI chat'),         _Pill('Organ map'),
                     _Pill('Doctor consult'),
                   ],
                 ),
                 const SizedBox(height: 32),
 
-                // Gmail button
+                // Google button
                 SizedBox(
                   width: double.infinity, height: 52,
                   child: ElevatedButton(
@@ -349,7 +344,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           builder: (_) => const EmailRegisterScreen())),
                   child: const Text(
                     "Don't have an account? Create one",
-                    style: TextStyle(fontSize: 13, color: AppColors.primary),
+                    style: TextStyle(
+                        fontSize: 13, color: AppColors.primary),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -380,13 +376,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 // Email field
                 TextFormField(
-                  controller: _emailCtrl,
+                  controller:  _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
+                  style: const TextStyle(
+                      fontSize: 14, color: AppColors.textPrimary),
                   decoration: InputDecoration(
-                    labelText: 'Email address',
+                    labelText:  'Email address',
                     prefixIcon: const Icon(Icons.email_outlined),
-                    filled: true,
-                    fillColor: AppColors.surface,
+                    filled:     true,
+                    fillColor:  AppColors.surface,
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none),
@@ -404,10 +402,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 // Password field
                 TextFormField(
-                  controller: _passCtrl,
+                  controller:  _passCtrl,
                   obscureText: _obscure,
+                  style: const TextStyle(
+                      fontSize: 14, color: AppColors.textPrimary),
                   decoration: InputDecoration(
-                    labelText: 'Password',
+                    labelText:  'Password',
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: GestureDetector(
                       onTap: () =>
@@ -416,7 +416,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ? Icons.visibility_off_outlined
                           : Icons.visibility_outlined),
                     ),
-                    filled: true,
+                    filled:    true,
                     fillColor: AppColors.surface,
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -431,8 +431,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             color: AppColors.primary, width: 1.5)),
                   ),
                 ),
+                const SizedBox(height: 8),
+
+                // ── FORGOT PASSWORD LINK ───────────────────────────────────
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    onTap: _openForgotPassword,
+                    child: const Text(
+                      'Forgot password?',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
+                // ────────────────────────────────────────────────────────────
+
                 const SizedBox(height: 20),
 
+                // Login button
                 SizedBox(
                   width: double.infinity, height: 52,
                   child: ElevatedButton(
@@ -476,7 +495,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 20),
               const Text(
                 'Secured by Firebase · Your data is private',
-                style: TextStyle(fontSize: 11, color: AppColors.textHint),
+                style: TextStyle(
+                    fontSize: 11, color: AppColors.textHint),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
@@ -487,8 +507,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 }
-
-// ── Feature Pill Widget ───────────────────────────────────────────────────────
 
 class _Pill extends StatelessWidget {
   final String label;
