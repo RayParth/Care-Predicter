@@ -3,16 +3,16 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import User, OtpCode
 from schemas import UserCreate, UserResponse, UserLogin, OtpRequest, OtpVerify
 from config import settings
-
-# Import from security.py — do NOT redefine these here
 from security import hash_password, verify_password, generate_otp, create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -20,31 +20,33 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ── OTP Email Delivery ────────────────────────────────────────────────────────
 
-def _send_otp_email(to_email: str, otp: str) -> bool:
-    """Send OTP via Gmail SMTP. Returns True if actually sent."""
+def _send_otp_email(to_email: str, otp: str, subject: str = None, body: str = None) -> bool:
+    """Send OTP via Gmail SMTP. subject and body can be overridden for different use cases."""
     if not settings.SMTP_EMAIL or not settings.SMTP_PASSWORD:
         print(f"\n{'='*50}")
         print(f"[DEV MODE] OTP for {to_email}: {otp}")
-        print(f"[DEV MODE] Add SMTP_EMAIL + SMTP_PASSWORD to .env for real emails")
         print(f"{'='*50}\n")
         return False
 
-    body = (
-        f"Hello,\n\n"
-        f"Your Care Predicter verification code is:\n\n"
-        f"        {otp}\n\n"
-        f"This code expires in {settings.OTP_EXPIRY_MINUTES} minutes.\n\n"
-        f"If you did not request this, please ignore this email.\n\n"
-        f"— Care Predicter Team"
-    )
+    if body is None:
+        body = (
+            f"Hello,\n\n"
+            f"Your Care Predicter verification code is:\n\n"
+            f"        {otp}\n\n"
+            f"This code expires in {settings.OTP_EXPIRY_MINUTES} minutes.\n\n"
+            f"If you did not request this, please ignore this email.\n\n"
+            f"— Care Predicter Team"
+        )
+
+    if subject is None:
+        subject = "Care Predicter — Verification Code"
 
     msg = MIMEMultipart()
-    msg["Subject"] = "Care Predicter — Verification Code"
-    msg["From"] = f"Care Predicter <{settings.SMTP_EMAIL}>"
-    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg["From"]    = f"Care Predicter <{settings.SMTP_EMAIL}>"
+    msg["To"]      = to_email
     msg.attach(MIMEText(body, "plain"))
 
-    # Try SSL (port 465) first, fall back to TLS (port 587)
     try:
         with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT_SSL, timeout=15) as smtp:
             smtp.login(settings.SMTP_EMAIL, settings.SMTP_PASSWORD)
@@ -67,7 +69,6 @@ def _send_otp_email(to_email: str, otp: str) -> bool:
 
 
 def _send_otp_sms(phone: str, otp: str) -> bool:
-    """Send OTP via Twilio SMS. Returns True if sent."""
     if not all([settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN, settings.TWILIO_FROM_NUMBER]):
         print(f"[SMS] Twilio not configured — skipping SMS for {phone}")
         return False
@@ -75,8 +76,10 @@ def _send_otp_sms(phone: str, otp: str) -> bool:
         from twilio.rest import Client
         client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
         client.messages.create(
-            body=(f"Care Predicter code: {otp}. "
-                  f"Expires in {settings.OTP_EXPIRY_MINUTES} min. Do not share."),
+            body=(
+                f"Care Predicter code: {otp}. "
+                f"Expires in {settings.OTP_EXPIRY_MINUTES} min. Do not share."
+            ),
             from_=settings.TWILIO_FROM_NUMBER,
             to=phone,
         )
@@ -87,62 +90,106 @@ def _send_otp_sms(phone: str, otp: str) -> bool:
         return False
 
 
-# ── Gmail OAuth Registration ──────────────────────────────────────────────────
+# ── Helper ────────────────────────────────────────────────────────────────────
 
-@router.post("/register", response_model=UserResponse)
-def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    """Google OAuth registration — already verified by Firebase."""
+def _user_dict(user: User) -> dict:
+    return {
+        "id":           user.id,
+        "email":        user.email,
+        "name":         user.name,
+        "role":         user.role,
+        "gender":       user.gender,
+        "age":          user.age,
+        "weight":       user.weight,
+        "height":       user.height,
+        "blood_group":  user.blood_group,
+        "has_password": user.password_hash is not None,
+    }
+
+
+# ── Google Login / Check ──────────────────────────────────────────────────────
+
+@router.post("/google-login")
+def google_login(user: UserCreate, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
-        # Update profile fields if they changed
-        for field in ["name", "gender", "age", "weight", "height", "blood_group"]:
+        access_token = create_access_token({"sub": existing.email})
+        return {
+            "needs_registration": False,
+            "access_token":       access_token,
+            "user":               _user_dict(existing),
+        }
+    else:
+        return {
+            "needs_registration": True,
+            "email": user.email,
+            "name":  user.name,
+        }
+
+
+# ── Google Full Registration ──────────────────────────────────────────────────
+
+@router.post("/register")
+def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == user.email).first()
+    if existing:
+        for field in ["name", "gender", "age", "weight", "height", "blood_group", "role"]:
             val = getattr(user, field, None)
             if val:
                 setattr(existing, field, val)
+        if user.password:
+            existing.password_hash = hash_password(user.password)
         db.commit()
         db.refresh(existing)
-        return existing
+        access_token = create_access_token({"sub": existing.email})
+        return {"access_token": access_token, **_user_dict(existing)}
 
     new_user = User(
-        email=user.email,
-        name=user.name,
-        role=user.role,
-        gender=user.gender,
-        age=user.age,
-        weight=user.weight,
-        height=user.height,
-        blood_group=user.blood_group,
-        email_verified=True,  # Gmail OAuth = already verified by Firebase
+        email          = user.email,
+        name           = user.name,
+        role           = user.role,
+        gender         = user.gender,
+        age            = user.age,
+        weight         = user.weight,
+        height         = user.height,
+        blood_group    = user.blood_group,
+        email_verified = True,
+        password_hash  = hash_password(user.password) if user.password else None,
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return new_user
+    access_token = create_access_token({"sub": new_user.email})
+    return {"access_token": access_token, **_user_dict(new_user)}
 
 
-# ── Email + Password Registration ────────────────────────────────────────────
+# ── Email + Password Registration ─────────────────────────────────────────────
 
 @router.post("/register-email", response_model=UserResponse)
 def register_with_email(user: UserCreate, db: Session = Depends(get_db)):
-    """Email + password registration. OTP verification required after."""
     if not user.password:
         raise HTTPException(status_code=400, detail="Password is required")
 
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
+        if existing.password_hash is None:
+            raise HTTPException(
+                status_code=400,
+                detail="This email is already linked to a Google account. Please login with Google."
+            )
         raise HTTPException(status_code=400, detail="Email already registered. Please login.")
 
     new_user = User(
-        email=user.email,
-        name=user.name,
-        role=user.role,
-        password_hash=hash_password(user.password),
-        gender=user.gender,
-        age=user.age,
-        weight=user.weight,
-        height=user.height,
-        blood_group=user.blood_group,
-        email_verified=False,
+        email          = user.email,
+        name           = user.name,
+        role           = user.role,
+        password_hash  = hash_password(user.password),
+        gender         = user.gender,
+        age            = user.age,
+        weight         = user.weight,
+        height         = user.height,
+        blood_group    = user.blood_group,
+        email_verified = False,
     )
     db.add(new_user)
     db.commit()
@@ -161,80 +208,202 @@ def login_with_email(credentials: UserLogin, db: Session = Depends(get_db)):
     if not user.password_hash:
         raise HTTPException(
             status_code=400,
-            detail="This account uses Gmail login. Please sign in with Google."
+            detail="This account uses Google login and has no password set. Please sign in with Google."
         )
 
     if not verify_password(credentials.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect password")
 
     access_token = create_access_token({"sub": user.email})
-
     return {
         "access_token": access_token,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "gender": user.gender,
-            "age": user.age,
-            "weight": user.weight,
-            "height": user.height,
-            "blood_group": user.blood_group,
-        }
+        "user":         _user_dict(user),
     }
 
 
-# ── Send OTP ──────────────────────────────────────────────────────────────────
+# ── Set Password ──────────────────────────────────────────────────────────────
+
+class SetPasswordRequest(BaseModel):
+    email:    str
+    password: str
+
+@router.post("/set-password")
+def set_password(data: SetPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if len(data.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    user.password_hash = hash_password(data.password)
+    db.commit()
+    return {"status": "success", "message": "Password set successfully."}
+
+
+# ── Forgot Password — Step 1: Send OTP ───────────────────────────────────────
+#
+# User enters their email on ForgotPasswordScreen.
+# We check the email exists, then send a password-reset OTP.
+# Google-only accounts (no password) are blocked — they don't need this.
+#
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+@router.post("/forgot-password")
+def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+
+    # Always return success even if email not found — security best practice
+    # so attackers can't enumerate which emails are registered
+    if not user:
+        return {"status": "sent", "message": "If this email is registered, a reset code has been sent."}
+
+    if user.password_hash is None:
+        # Google-only account — they have no password to reset
+        raise HTTPException(
+            status_code=400,
+            detail="This account uses Google login. No password to reset. Please sign in with Google."
+        )
+
+    # Rate limit: max 3 reset OTPs per hour
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    recent_count = db.query(OtpCode).filter(
+        OtpCode.email      == data.email,
+        OtpCode.created_at >= one_hour_ago,
+    ).count()
+
+    if recent_count >= 3:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many reset requests. Please wait before trying again."
+        )
+
+    # Delete old OTPs for this email
+    db.query(OtpCode).filter(OtpCode.email == data.email).delete()
+    db.commit()
+
+    otp     = generate_otp()
+    expires = datetime.utcnow() + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
+
+    otp_record = OtpCode(
+        email      = data.email,
+        code       = otp,
+        expires_at = expires,
+    )
+    db.add(otp_record)
+    db.commit()
+
+    # Send a password-reset specific email
+    reset_body = (
+        f"Hello {user.name},\n\n"
+        f"You requested a password reset for your Care Predicter account.\n\n"
+        f"Your reset code is:\n\n"
+        f"        {otp}\n\n"
+        f"This code expires in {settings.OTP_EXPIRY_MINUTES} minutes.\n\n"
+        f"If you did not request this, your account is safe — ignore this email.\n\n"
+        f"— Care Predicter Team"
+    )
+    _send_otp_email(
+        data.email,
+        otp,
+        subject="Care Predicter — Password Reset Code",
+        body=reset_body,
+    )
+
+    return {
+        "status":  "sent",
+        "message": f"Password reset code sent to {data.email}",
+    }
+
+
+# ── Reset Password — Step 2: Verify OTP + Save New Password ──────────────────
+#
+# User enters the OTP they received + their new password.
+# We verify the OTP, then update their password hash.
+#
+class ResetPasswordRequest(BaseModel):
+    email:        str
+    otp:          str
+    new_password: str
+
+@router.post("/reset-password")
+def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    # Find the OTP record
+    record = db.query(OtpCode).filter(
+        OtpCode.email == data.email,
+        OtpCode.used  == False,
+    ).order_by(OtpCode.id.desc()).first()
+
+    if not record:
+        raise HTTPException(status_code=400, detail="No reset code found. Please request a new one.")
+
+    if datetime.utcnow() > record.expires_at:
+        raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
+
+    if record.code != data.otp:
+        raise HTTPException(status_code=400, detail="Incorrect reset code.")
+
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+    # Mark OTP as used
+    record.used = True
+    db.commit()
+
+    # Update the password
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    user.password_hash = hash_password(data.new_password)
+    db.commit()
+
+    return {
+        "status":  "success",
+        "message": "Password reset successfully. You can now login with your new password.",
+    }
+
+
+# ── Send OTP (for registration) ───────────────────────────────────────────────
 
 @router.post("/send-otp")
 def send_otp_endpoint(request: OtpRequest, db: Session = Depends(get_db)):
-    """Generate OTP, save to DB, send via email."""
-    # Rate limiting — max 5 OTP requests per hour per email
     one_hour_ago = datetime.utcnow() - timedelta(hours=1)
     recent_count = db.query(OtpCode).filter(
-        OtpCode.email == request.email,
+        OtpCode.email      == request.email,
+        OtpCode.created_at >= one_hour_ago,
     ).count()
 
-    # Simple check: if more than 5 unused OTPs exist, rate limit
     if recent_count >= 5:
         raise HTTPException(
             status_code=429,
             detail="Too many OTP requests. Please wait before requesting again."
         )
 
-    # Delete all old OTPs for this email
     db.query(OtpCode).filter(OtpCode.email == request.email).delete()
     db.commit()
 
-    otp = generate_otp()
+    otp     = generate_otp()
     expires = datetime.utcnow() + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
 
     otp_record = OtpCode(
-        email=request.email,
-        code=otp,
-        expires_at=expires,
+        email      = request.email,
+        code       = otp,
+        expires_at = expires,
     )
     db.add(otp_record)
     db.commit()
 
-    # Send via email
     sent = _send_otp_email(request.email, otp)
-
-    return {
-        "status": "sent",
-        "message": f"OTP sent to {request.email}",
-        "delivered": sent
-    }
+    return {"status": "sent", "message": f"OTP sent to {request.email}", "delivered": sent}
 
 
-# ── Verify OTP ────────────────────────────────────────────────────────────────
+# ── Verify OTP (for registration) ─────────────────────────────────────────────
 
 @router.post("/verify-otp")
 def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
     record = db.query(OtpCode).filter(
         OtpCode.email == data.email,
-        OtpCode.used == False,
+        OtpCode.used  == False,
     ).order_by(OtpCode.id.desc()).first()
 
     if not record:
@@ -246,32 +415,22 @@ def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
     if record.code != data.code:
         raise HTTPException(status_code=400, detail="Incorrect OTP.")
 
-    record.used = True
-
+    record.used         = True
     db.commit()
 
-    # Mark user as verified
     user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found after OTP verification.")
+
+    user.email_verified = True
+    db.commit()
 
     access_token = create_access_token({"sub": user.email})
-
     return {
-        "status": "verified",
+        "status":       "verified",
         "access_token": access_token,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "gender": user.gender,
-            "age": user.age,
-            "weight": user.weight,
-            "height": user.height,
-            "blood_group": user.blood_group,
-        }
+        "user":         _user_dict(user),
     }
-
-
 
 
 # ── Get User by Email ─────────────────────────────────────────────────────────
