@@ -8,7 +8,7 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/consult", tags=["consult"])
 
 
-# Helper: build full patient data for a consultation
+# ── Helper: build full patient data for a consultation ────────────────────────
 
 def _build_consultation_detail(c: Consultation, db: Session) -> dict:
     patient = db.query(User).filter(User.id == c.patient_id).first()
@@ -73,10 +73,24 @@ def _build_consultation_detail(c: Consultation, db: Session) -> dict:
     }
 
 
-# POST /consult/ — Patient creates a consultation request
+# ── POST /consult/ — Patient creates a consultation request ──────────────────
+# FIXED: Added duplicate prevention — no more spamming the same doctor
 
 @router.post("/")
 def create_consultation(data: ConsultCreate, db: Session = Depends(get_db)):
+    # Prevent duplicate pending requests to the same doctor
+    existing = db.query(Consultation).filter(
+        Consultation.patient_id == data.patient_id,
+        Consultation.doctor_name == data.doctor_name,
+        Consultation.status == "pending",
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="You already have a pending request to this doctor. Wait for a response first."
+        )
+
     consult = Consultation(
         patient_id  = data.patient_id,
         doctor_name = data.doctor_name,
@@ -93,7 +107,26 @@ def create_consultation(data: ConsultCreate, db: Session = Depends(get_db)):
     }
 
 
-# GET /consult/{patient_id} — Patient sees their own requests
+# ── IMPORTANT: Specific routes MUST come before parameterized routes ──────────
+# FIXED: /consult/doctor/{doctor_name} was BELOW /consult/{patient_id}
+# FastAPI matched "doctor" as a patient_id integer, causing 422 errors on the
+# doctor dashboard. Specific path first, parameterized path after.
+
+
+# ── GET /consult/doctor/{doctor_name} — Doctor sees all requests for them ─────
+
+@router.get("/doctor/{doctor_name}")
+def get_consultations_for_doctor(
+    doctor_name: str, db: Session = Depends(get_db)
+):
+    consultations = db.query(Consultation).filter(
+        Consultation.doctor_name == doctor_name
+    ).order_by(Consultation.created_at.desc()).all()
+
+    return [_build_consultation_detail(c, db) for c in consultations]
+
+
+# ── GET /consult/{patient_id} — Patient sees their own requests ───────────────
 
 @router.get("/{patient_id}")
 def get_consultations_for_patient(
@@ -115,24 +148,10 @@ def get_consultations_for_patient(
     ]
 
 
-# GET /consult/doctor/{doctor_name} — Doctor sees all requests for them
-# Returns each consultation enriched with patient profile, vitals, and labs.
-
-@router.get("/doctor/{doctor_name}")
-def get_consultations_for_doctor(
-    doctor_name: str, db: Session = Depends(get_db)
-):
-    consultations = db.query(Consultation).filter(
-        Consultation.doctor_name == doctor_name
-    ).order_by(Consultation.created_at.desc()).all()
-
-    return [_build_consultation_detail(c, db) for c in consultations]
-
-
-# PUT /consult/{consult_id}/status — Doctor accepts or rejects
+# ── PUT /consult/{consult_id}/status — Doctor accepts or rejects ──────────────
 
 class StatusUpdate(BaseModel):
-    status: str
+    status: str   # "accepted" or "rejected"
     notes: str = ""
 
 @router.put("/{consult_id}/status")
