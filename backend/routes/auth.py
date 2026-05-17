@@ -1,9 +1,7 @@
-import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -18,10 +16,9 @@ from security import hash_password, verify_password, generate_otp, create_access
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-# ── OTP Email Delivery ────────────────────────────────────────────────────────
+# OTP Email Delivery
 
 def _send_otp_email(to_email: str, otp: str, subject: str = None, body: str = None) -> bool:
-    """Send OTP via Gmail SMTP. subject and body can be overridden for different use cases."""
     if not settings.SMTP_EMAIL or not settings.SMTP_PASSWORD:
         print(f"\n{'='*50}")
         print(f"[DEV MODE] OTP for {to_email}: {otp}")
@@ -37,7 +34,6 @@ def _send_otp_email(to_email: str, otp: str, subject: str = None, body: str = No
             f"If you did not request this, please ignore this email.\n\n"
             f"— Care Predicter Team"
         )
-
     if subject is None:
         subject = "Care Predicter — Verification Code"
 
@@ -63,7 +59,7 @@ def _send_otp_email(to_email: str, otp: str, subject: str = None, body: str = No
                 print(f"[EMAIL] OTP sent to {to_email} via TLS")
                 return True
         except Exception as tls_err:
-            print(f"[EMAIL] Both SSL and TLS failed: {tls_err}")
+            print(f"[EMAIL] Both failed: {tls_err}")
             print(f"[FALLBACK] OTP for {to_email}: {otp}")
             return False
 
@@ -90,7 +86,7 @@ def _send_otp_sms(phone: str, otp: str) -> bool:
         return False
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+# Helper
 
 def _user_dict(user: User) -> dict:
     return {
@@ -107,7 +103,10 @@ def _user_dict(user: User) -> dict:
     }
 
 
-# ── Google Login / Check ──────────────────────────────────────────────────────
+# Google Login / Check
+# Called by Flutter right after Firebase Google sign-in.
+# Returns needs_registration:false + token + profile if user exists.
+# Returns needs_registration:true if brand new user.
 
 @router.post("/google-login")
 def google_login(user: UserCreate, db: Session = Depends(get_db)):
@@ -127,7 +126,9 @@ def google_login(user: UserCreate, db: Session = Depends(get_db)):
         }
 
 
-# ── Google Full Registration ──────────────────────────────────────────────────
+# Google Full Registration
+# Called from ProfileSetupScreen after new Google user fills their profile.
+# password is optional — if set, user can also login with email+password.
 
 @router.post("/register")
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
@@ -163,7 +164,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     return {"access_token": access_token, **_user_dict(new_user)}
 
 
-# ── Email + Password Registration ─────────────────────────────────────────────
+# Email + Password Registration
 
 @router.post("/register-email", response_model=UserResponse)
 def register_with_email(user: UserCreate, db: Session = Depends(get_db)):
@@ -197,7 +198,8 @@ def register_with_email(user: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
-# ── Email + Password Login ────────────────────────────────────────────────────
+# Email + Password Login
+# Google users can login here if they set a password during registration.
 
 @router.post("/login-email")
 def login_with_email(credentials: UserLogin, db: Session = Depends(get_db)):
@@ -215,13 +217,11 @@ def login_with_email(credentials: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Incorrect password")
 
     access_token = create_access_token({"sub": user.email})
-    return {
-        "access_token": access_token,
-        "user":         _user_dict(user),
-    }
+    return {"access_token": access_token, "user": _user_dict(user)}
 
 
-# ── Set Password ──────────────────────────────────────────────────────────────
+# Set Password
+# Existing Google users call this to add a password to their account.
 
 class SetPasswordRequest(BaseModel):
     email:    str
@@ -239,12 +239,8 @@ def set_password(data: SetPasswordRequest, db: Session = Depends(get_db)):
     return {"status": "success", "message": "Password set successfully."}
 
 
-# ── Forgot Password — Step 1: Send OTP ───────────────────────────────────────
-#
-# User enters their email on ForgotPasswordScreen.
-# We check the email exists, then send a password-reset OTP.
-# Google-only accounts (no password) are blocked — they don't need this.
-#
+# Forgot Password — Step 1: Send OTP
+
 class ForgotPasswordRequest(BaseModel):
     email: str
 
@@ -252,19 +248,16 @@ class ForgotPasswordRequest(BaseModel):
 def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
 
-    # Always return success even if email not found — security best practice
-    # so attackers can't enumerate which emails are registered
     if not user:
+        # Always return success — do not reveal whether email exists
         return {"status": "sent", "message": "If this email is registered, a reset code has been sent."}
 
     if user.password_hash is None:
-        # Google-only account — they have no password to reset
         raise HTTPException(
             status_code=400,
             detail="This account uses Google login. No password to reset. Please sign in with Google."
         )
 
-    # Rate limit: max 3 reset OTPs per hour
     one_hour_ago = datetime.utcnow() - timedelta(hours=1)
     recent_count = db.query(OtpCode).filter(
         OtpCode.email      == data.email,
@@ -277,22 +270,14 @@ def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
             detail="Too many reset requests. Please wait before trying again."
         )
 
-    # Delete old OTPs for this email
     db.query(OtpCode).filter(OtpCode.email == data.email).delete()
     db.commit()
 
     otp     = generate_otp()
     expires = datetime.utcnow() + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
-
-    otp_record = OtpCode(
-        email      = data.email,
-        code       = otp,
-        expires_at = expires,
-    )
-    db.add(otp_record)
+    db.add(OtpCode(email=data.email, code=otp, expires_at=expires))
     db.commit()
 
-    # Send a password-reset specific email
     reset_body = (
         f"Hello {user.name},\n\n"
         f"You requested a password reset for your Care Predicter account.\n\n"
@@ -303,23 +288,16 @@ def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
         f"— Care Predicter Team"
     )
     _send_otp_email(
-        data.email,
-        otp,
+        data.email, otp,
         subject="Care Predicter — Password Reset Code",
         body=reset_body,
     )
 
-    return {
-        "status":  "sent",
-        "message": f"Password reset code sent to {data.email}",
-    }
+    return {"status": "sent", "message": f"Password reset code sent to {data.email}"}
 
 
-# ── Reset Password — Step 2: Verify OTP + Save New Password ──────────────────
-#
-# User enters the OTP they received + their new password.
-# We verify the OTP, then update their password hash.
-#
+# Reset Password — Step 2: Verify OTP + Save New Password
+
 class ResetPasswordRequest(BaseModel):
     email:        str
     otp:          str
@@ -327,7 +305,6 @@ class ResetPasswordRequest(BaseModel):
 
 @router.post("/reset-password")
 def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
-    # Find the OTP record
     record = db.query(OtpCode).filter(
         OtpCode.email == data.email,
         OtpCode.used  == False,
@@ -335,21 +312,16 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
 
     if not record:
         raise HTTPException(status_code=400, detail="No reset code found. Please request a new one.")
-
     if datetime.utcnow() > record.expires_at:
         raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
-
     if record.code != data.otp:
         raise HTTPException(status_code=400, detail="Incorrect reset code.")
-
     if len(data.new_password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
 
-    # Mark OTP as used
     record.used = True
     db.commit()
 
-    # Update the password
     user = db.query(User).filter(User.email == data.email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
@@ -363,7 +335,7 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
     }
 
 
-# ── Send OTP (for registration) ───────────────────────────────────────────────
+# Send OTP (for registration)
 
 @router.post("/send-otp")
 def send_otp_endpoint(request: OtpRequest, db: Session = Depends(get_db)):
@@ -384,20 +356,14 @@ def send_otp_endpoint(request: OtpRequest, db: Session = Depends(get_db)):
 
     otp     = generate_otp()
     expires = datetime.utcnow() + timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
-
-    otp_record = OtpCode(
-        email      = request.email,
-        code       = otp,
-        expires_at = expires,
-    )
-    db.add(otp_record)
+    db.add(OtpCode(email=request.email, code=otp, expires_at=expires))
     db.commit()
 
     sent = _send_otp_email(request.email, otp)
     return {"status": "sent", "message": f"OTP sent to {request.email}", "delivered": sent}
 
 
-# ── Verify OTP (for registration) ─────────────────────────────────────────────
+# Verify OTP
 
 @router.post("/verify-otp")
 def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
@@ -408,10 +374,8 @@ def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
 
     if not record:
         raise HTTPException(status_code=400, detail="No OTP found. Please request a new one.")
-
     if datetime.utcnow() > record.expires_at:
         raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
-
     if record.code != data.code:
         raise HTTPException(status_code=400, detail="Incorrect OTP.")
 
@@ -433,7 +397,7 @@ def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
     }
 
 
-# ── Get User by Email ─────────────────────────────────────────────────────────
+# Get User by Email
 
 @router.get("/user/{email}", response_model=UserResponse)
 def get_user(email: str, db: Session = Depends(get_db)):
@@ -443,7 +407,7 @@ def get_user(email: str, db: Session = Depends(get_db)):
     return user
 
 
-# ── Get Profile ───────────────────────────────────────────────────────────────
+# Get Profile
 
 @router.get("/profile/{user_id}", response_model=UserResponse)
 def get_profile(user_id: int, db: Session = Depends(get_db)):
@@ -453,7 +417,7 @@ def get_profile(user_id: int, db: Session = Depends(get_db)):
     return user
 
 
-# ── Update Profile ────────────────────────────────────────────────────────────
+# Update Profile
 
 @router.put("/profile/{user_id}", response_model=UserResponse)
 def update_profile(user_id: int, data: UserCreate, db: Session = Depends(get_db)):
@@ -469,3 +433,25 @@ def update_profile(user_id: int, data: UserCreate, db: Session = Depends(get_db)
     db.commit()
     db.refresh(user)
     return user
+
+
+# Get All Doctors
+# Returns all registered users with role = doctor.
+# Called by ConsultTab so patients see only real registered doctors.
+
+@router.get("/doctors")
+def get_all_doctors(db: Session = Depends(get_db)):
+    doctors = db.query(User).filter(User.role == "doctor").all()
+    return [
+        {
+            "id":    d.id,
+            "name":  d.name,
+            "email": d.email,
+            "initials": "".join(
+                word[0].upper()
+                for word in d.name.split()
+                if word
+            )[:2] if d.name else "DR",
+        }
+        for d in doctors
+    ]
