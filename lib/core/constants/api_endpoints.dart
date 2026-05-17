@@ -7,13 +7,8 @@ class ApiEndpoints {
   static const String loginEmail     = '/auth/login-email';
   static const String googleLogin    = '/auth/google-login';
   static const String setPassword    = '/auth/set-password';
-
-  // Forgot password — step 1: send OTP to email
   static const String forgotPassword = '/auth/forgot-password';
-
-  // Reset password — step 2: verify OTP + save new password
   static const String resetPassword  = '/auth/reset-password';
-
   static const String sendOtp        = '/auth/send-otp';
   static const String verifyOtp      = '/auth/verify-otp';
   static const String userByEmail    = '/auth/user';
@@ -30,6 +25,12 @@ class ApiEndpoints {
   // ── Consult ───────────────────────────────────────────────────────────────
   static const String consultPost = '/consult/';
   static const String consult     = '/consult';
+
+  // GET /consult/doctor/{doctor_name} — all consultations for a doctor
+  static const String consultDoctor = '/consult/doctor';
+
+  // PUT /consult/{id}/status — accept or reject a consultation
+  static const String consultStatus = '/consult';   // append /{id}/status
 
   // ── Health check ──────────────────────────────────────────────────────────
   static const String health = '/health';
