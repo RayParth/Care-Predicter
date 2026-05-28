@@ -9,7 +9,7 @@ class HealthConnectService {
     HealthDataType.HEART_RATE,
     HealthDataType.BLOOD_OXYGEN,
     HealthDataType.ACTIVE_ENERGY_BURNED,
-    HealthDataType.SLEEP_ASLEEP,
+    HealthDataType.SLEEP_SESSION,
     HealthDataType.BODY_TEMPERATURE,
     HealthDataType.BLOOD_PRESSURE_SYSTOLIC,
     HealthDataType.BLOOD_PRESSURE_DIASTOLIC,
