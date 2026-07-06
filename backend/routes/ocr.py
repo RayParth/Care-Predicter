@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from database import get_db
 from models import LabReport, User
+from security import get_current_user
 
 router = APIRouter()
 
@@ -211,8 +212,14 @@ async def upload_lab_report(
     file: UploadFile = File(...),
     user_id: int = Form(...),       # FIXED: required, no default
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    # Verify the user_id actually exists in the database
+    # FIXED: previously any authenticated-or-not caller could pass any
+    # user_id and their uploaded lab report would be saved under a stranger's
+    # account. Now the form user_id must match the logged-in caller.
+    if user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot upload a report for another user.")
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail=f"User {user_id} not found")
