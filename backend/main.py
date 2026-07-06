@@ -2,8 +2,9 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import engine, Base, get_db
-from models import LabReport
+from models import LabReport, User
 from config import settings
+from security import get_current_user, require_self_or_doctor
 
 # Import from the new routes folder
 from routes.auth import router as auth_router
@@ -23,7 +24,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # FIXED: was allow_origins=["*"] with credentials=True — wide open to any
+    # site. Your Flutter mobile client doesn't need CORS at all (that's a
+    # browser mechanism); this only matters once you add a web dashboard.
+    # Set CORS_ORIGINS in .env for whatever web frontend actually calls this.
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,7 +56,12 @@ def health_check():
 
 # Lab report endpoints (kept in main.py as they don't have their own router yet)
 @app.get("/labs/{user_id}")
-def get_lab_reports(user_id: int, db: Session = Depends(get_db)):
+def get_lab_reports(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_self_or_doctor(user_id, current_user)
     reports = db.query(LabReport).filter(
         LabReport.user_id == user_id
     ).order_by(LabReport.uploaded_at.desc()).all()
@@ -88,7 +98,12 @@ def get_lab_reports(user_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/labs/{user_id}/latest")
-def get_latest_lab(user_id: int, db: Session = Depends(get_db)):
+def get_latest_lab(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_self_or_doctor(user_id, current_user)
     report = db.query(LabReport).filter(
         LabReport.user_id == user_id
     ).order_by(LabReport.uploaded_at.desc()).first()

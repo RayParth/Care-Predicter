@@ -3,9 +3,10 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from database import get_db
-from models import Vital, Alert
+from models import Vital, Alert, User
 from schemas import VitalCreate, VitalResponse
 from config import settings
+from security import get_current_user, require_self_or_doctor
 
 router = APIRouter(prefix="/vitals", tags=["vitals"])
 
@@ -49,7 +50,17 @@ def check_thresholds(vital: VitalCreate, db: Session):
 
 
 @router.post("/", response_model=VitalResponse)
-def save_vitals(vital: VitalCreate, db: Session = Depends(get_db)):
+def save_vitals(
+    vital: VitalCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # A logged-in patient can only write vitals under their own user_id.
+    # Without this check, patient A's token could write into patient B's record
+    # by just changing the user_id in the request body.
+    if vital.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot save vitals for another user.")
+
     new_vital = Vital(**vital.dict())
     db.add(new_vital)
     db.commit()
@@ -59,7 +70,12 @@ def save_vitals(vital: VitalCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{user_id}", response_model=List[VitalResponse])
-def get_vitals(user_id: int, db: Session = Depends(get_db)):
+def get_vitals(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_self_or_doctor(user_id, current_user)
     vitals = (
         db.query(Vital)
         .filter(Vital.user_id == user_id)
@@ -71,7 +87,12 @@ def get_vitals(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{user_id}/latest", response_model=VitalResponse)
-def get_latest_vital(user_id: int, db: Session = Depends(get_db)):
+def get_latest_vital(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_self_or_doctor(user_id, current_user)
     vital = (
         db.query(Vital)
         .filter(Vital.user_id == user_id)
