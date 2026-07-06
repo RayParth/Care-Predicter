@@ -57,5 +57,15 @@ class Settings:
     VITALS_HISTORY_LIMIT: int = 10
     LAB_HISTORY_LIMIT: int = 20
 
+    # CORS: comma-separated list in .env, e.g.
+    # CORS_ORIGINS=https://your-app.railway.app,http://localhost:3000
+    # Empty in dev is fine since a Flutter mobile client doesn't send an
+    # Origin header the way a browser does — this matters if you ever add
+    # a web admin/doctor dashboard. Do NOT ship "*" with allow_credentials=True
+    # to production; browsers reject it and it's bad practice regardless.
+    CORS_ORIGINS: list = [
+        o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
+    ]
+
 
 settings = Settings()
