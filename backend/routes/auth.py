@@ -11,7 +11,10 @@ from database import get_db
 from models import User, OtpCode
 from schemas import UserCreate, UserResponse, UserLogin, OtpRequest, OtpVerify
 from config import settings
-from security import hash_password, verify_password, generate_otp, create_access_token
+from security import (
+    hash_password, verify_password, generate_otp, create_access_token,
+    get_current_user, require_self_or_doctor,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -400,7 +403,16 @@ def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
 # Get User by Email
 
 @router.get("/user/{email}", response_model=UserResponse)
-def get_user(email: str, db: Session = Depends(get_db)):
+def get_user(
+    email: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # FIXED: this used to return any user's full profile (name, age, weight,
+    # height, blood group) to anyone who could guess or enumerate an email —
+    # no login required at all.
+    if current_user.email != email and current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Not authorized for this resource.")
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -410,7 +422,12 @@ def get_user(email: str, db: Session = Depends(get_db)):
 # Get Profile
 
 @router.get("/profile/{user_id}", response_model=UserResponse)
-def get_profile(user_id: int, db: Session = Depends(get_db)):
+def get_profile(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_self_or_doctor(user_id, current_user)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -418,9 +435,19 @@ def get_profile(user_id: int, db: Session = Depends(get_db)):
 
 
 # Update Profile
+# FIXED: previously anyone could PUT any user_id and overwrite that person's
+# name, age, weight, height, blood group with no auth at all.
 
 @router.put("/profile/{user_id}", response_model=UserResponse)
-def update_profile(user_id: int, data: UserCreate, db: Session = Depends(get_db)):
+def update_profile(
+    user_id: int,
+    data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Profile edits are self-only — a doctor should not silently overwrite a
+    # patient's own profile fields, so no allow_doctor bypass here.
+    require_self_or_doctor(user_id, current_user, allow_doctor=False)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -440,7 +467,10 @@ def update_profile(user_id: int, data: UserCreate, db: Session = Depends(get_db)
 # Called by ConsultTab so patients see only real registered doctors.
 
 @router.get("/doctors")
-def get_all_doctors(db: Session = Depends(get_db)):
+def get_all_doctors(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     doctors = db.query(User).filter(User.role == "doctor").all()
     return [
         {
