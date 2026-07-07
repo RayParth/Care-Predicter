@@ -4,6 +4,7 @@ from database import get_db
 from models import Consultation, User, Vital, LabReport
 from schemas import ConsultCreate
 from pydantic import BaseModel
+from security import get_current_user, require_self_or_doctor
 
 router = APIRouter(prefix="/consult", tags=["consult"])
 
@@ -77,7 +78,14 @@ def _build_consultation_detail(c: Consultation, db: Session) -> dict:
 # FIXED: Added duplicate prevention — no more spamming the same doctor
 
 @router.post("/")
-def create_consultation(data: ConsultCreate, db: Session = Depends(get_db)):
+def create_consultation(
+    data: ConsultCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if data.patient_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot file a consultation request as another user.")
+
     # Prevent duplicate pending requests to the same doctor
     existing = db.query(Consultation).filter(
         Consultation.patient_id == data.patient_id,
@@ -117,8 +125,23 @@ def create_consultation(data: ConsultCreate, db: Session = Depends(get_db)):
 
 @router.get("/doctor/{doctor_name}")
 def get_consultations_for_doctor(
-    doctor_name: str, db: Session = Depends(get_db)
+    doctor_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    # NOTE — real design flaw, not fully fixed here: consultations are keyed
+    # by doctor_name (a string), not doctor_id (a foreign key). This check
+    # only confirms the caller IS a doctor and their own name matches the
+    # path param. It does NOT stop Doctor A from setting their `name` field
+    # to "Dr. B" and pulling Dr. B's consultation queue — the schema has no
+    # way to tell two doctors with the same display name apart, or to stop
+    # a doctor from renaming themselves to impersonate another.
+    # Real fix: add doctor_id (ForeignKey to users.id) on Consultation and
+    # route by ID, not by name. That's a migration, not a one-line patch —
+    # flagging it here instead of pretending this closes the gap.
+    if current_user.role != "doctor" or current_user.name != doctor_name:
+        raise HTTPException(status_code=403, detail="Not authorized for this doctor's queue.")
+
     consultations = db.query(Consultation).filter(
         Consultation.doctor_name == doctor_name
     ).order_by(Consultation.created_at.desc()).all()
@@ -130,8 +153,11 @@ def get_consultations_for_doctor(
 
 @router.get("/{patient_id}")
 def get_consultations_for_patient(
-    patient_id: int, db: Session = Depends(get_db)
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    require_self_or_doctor(patient_id, current_user)
     consultations = db.query(Consultation).filter(
         Consultation.patient_id == patient_id
     ).order_by(Consultation.created_at.desc()).all()
@@ -159,7 +185,11 @@ def update_consultation_status(
     consult_id: int,
     data: StatusUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Only doctors can update consultation status.")
+
     consult = db.query(Consultation).filter(
         Consultation.id == consult_id
     ).first()
