@@ -77,12 +77,27 @@ class UserProfile {
 }
 
 class UserProfileNotifier extends StateNotifier<UserProfile> {
+  // GUARD: once save() has been called explicitly (fresh login/register),
+  // the background _load() from the constructor must NOT be allowed to
+  // clobber that state with stale/empty SharedPreferences data.
+  //
+  // BUG THIS FIXES: _load() is fired unawaited from the constructor. On a
+  // fresh install, login code calls save(profile) almost immediately after
+  // the notifier is constructed. save() sets state synchronously and then
+  // awaits disk writes. _load() started first but resolves its disk READ
+  // later (after an await gap) and was overwriting the correct state with
+  // UserProfile.empty() because it read prefs before save() had written to
+  // them. This made the name/profile vanish on first login only, since a
+  // subsequent app restart has no concurrent save() to race against.
+  bool _hasExplicitSave = false;
+
   UserProfileNotifier() : super(UserProfile.empty()) {
     _load();
   }
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
+    if (_hasExplicitSave) return; // an explicit save already won, don't clobber it
     state = UserProfile(
       name: p.getString('name') ?? '',
       email: p.getString('email') ?? '',
@@ -97,6 +112,7 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
   }
 
   Future<void> save(UserProfile profile) async {
+    _hasExplicitSave = true;
     state = profile;
     final p = await SharedPreferences.getInstance();
     await p.setString('name', profile.name);
@@ -111,6 +127,7 @@ class UserProfileNotifier extends StateNotifier<UserProfile> {
   }
 
   Future<void> clear() async {
+    _hasExplicitSave = true; // logout is also an explicit, authoritative write
     state = UserProfile.empty();
     final p = await SharedPreferences.getInstance();
     await p.clear();
