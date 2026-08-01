@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers/user_provider.dart';
 import '../../shared/services/auth_service.dart';
@@ -114,6 +115,16 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     );
 
     final backendId = result?['id'] ?? 0;
+
+    // FIXED: the login_screen.dart Google path saves access_token; this
+    // registration path never did. Without it, brand-new Google users
+    // land in MainShell/DoctorShell with no token, so their first
+    // vitals/OCR/consult call 401s.
+    final newToken = result?['access_token'] as String?;
+    if (newToken != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('auth_token', newToken);
+    }
 
     // Save again now that we have the backend DB id
     await ref.read(userProfileProvider.notifier).save(
