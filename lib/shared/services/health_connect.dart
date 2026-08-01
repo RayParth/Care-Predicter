@@ -23,6 +23,9 @@ class HealthConnectService {
   // Returns true/false without showing any dialog.
   // Call this from HomeTab.initState() to decide whether to show the banner.
   //
+  // NOTE: this is intentionally NOT called inside fetchTodayData() anymore.
+  // See the comment there for why.
+  //
   Future<bool> hasPermissions() async {
     try {
       await _health.configure();
@@ -59,20 +62,35 @@ class HealthConnectService {
 
   // ── Fetch Today's Data ────────────────────────────────────────────────────
   //
-  // FIXED: This method NO LONGER calls requestPermissions() internally.
+  // FIXED (round 2): removed the hasPermissions() gate that used to run at
+  // the top of this method.
   //
-  // The old code had:
-  //   if (!_permissionsGranted) { final granted = await requestPermissions(); }
+  // Bug: right after a fresh grant, the underlying `health` plugin's
+  // hasPermissions(_types) call is unreliable across a mixed list of 10
+  // data types (steps, heart rate, blood pressure, temperature, weight,
+  // height, sleep, ...) — it frequently returns null instead of a clean
+  // true/false while Health Connect is still settling the newly-granted
+  // state. Our old code did `?? false`, so a null (uncertain) response
+  // silently collapsed into "not granted" — even though the OS-level log
+  // (`FLUTTER_HEALTH: 8 Health Connect permissions were granted!`) and our
+  // own requestPermissions() log (`Permissions granted: true`) both
+  // confirmed access was actually granted seconds earlier. Every single
+  // fetch was bailing out early and returning empty data as a result.
   //
-  // That was wrong because fetchTodayData() runs inside a FutureProvider which
-  // has no live Activity context. Android threw "Permission launcher not found"
-  // on every cold start, so Health Connect data was always empty.
+  // Fix: don't re-check permissions here at all. If they're genuinely
+  // missing, getHealthDataFromTypes() below will simply return no data
+  // (or throw, which the existing catch handles) — we don't need a second,
+  // less reliable gate in front of it. Permission status for UI purposes
+  // (showing the "Grant Access" banner) is still handled correctly by
+  // hasPermissions() being called separately from HomeTab.initState().
   //
-  // Correct flow:
-  //   1. HomeTab calls hasPermissions() on load (no dialog, no crash)
-  //   2. If not granted → show "Grant Access" banner
-  //   3. User taps button → requestPermissions() called from UI (has Activity context)
-  //   4. If granted → ref.invalidate(healthDataProvider) → fetchTodayData() runs clean
+  // FIXED (original): SLEEP_SESSION was requested in _types but the old
+  // switch only handled SLEEP_ASLEEP, so sleep data always fell through to
+  // `default` and sleepHours stayed 0.0 forever, silently. Also added a
+  // type guard before the NumericHealthValue cast — SLEEP_SESSION points
+  // are not numeric values (they're a duration derived from dateFrom/dateTo),
+  // so the old unconditional cast would throw once sleep data actually
+  // started reaching the switch.
   //
   Future<Map<String, dynamic>> fetchTodayData() async {
     final now      = DateTime.now();
@@ -93,13 +111,6 @@ class HealthConnectService {
     };
 
     try {
-      // Check if permissions exist — do NOT request them here
-      final permitted = await hasPermissions();
-      if (!permitted) {
-        print('[HealthConnect] Permissions not granted — returning empty data');
-        return result;
-      }
-
       final data = await _health.getHealthDataFromTypes(
         startTime: midnight,
         endTime:   now,
@@ -125,7 +136,15 @@ class HealthConnectService {
       double latestHeight    = 0;
 
       for (final point in clean) {
-        final val = (point.value as NumericHealthValue).numericValue.toDouble();
+        // FIXED: guard the cast. SLEEP_SESSION (and potentially other
+        // non-scalar types) do not come back as NumericHealthValue — the
+        // old unconditional cast would throw as soon as a sleep point was
+        // actually reached. Numeric-only types read `val`; SLEEP_SESSION
+        // computes its own duration below from dateFrom/dateTo instead.
+        double val = 0;
+        if (point.value is NumericHealthValue) {
+          val = (point.value as NumericHealthValue).numericValue.toDouble();
+        }
 
         switch (point.type) {
           case HealthDataType.STEPS:
@@ -140,7 +159,7 @@ class HealthConnectService {
           case HealthDataType.ACTIVE_ENERGY_BURNED:
             totalCalories += val;
             break;
-          case HealthDataType.SLEEP_ASLEEP:
+          case HealthDataType.SLEEP_SESSION:
             final mins = point.dateTo.difference(point.dateFrom).inMinutes;
             totalSleep += mins / 60;
             break;
@@ -255,7 +274,10 @@ class HealthConnectService {
         int    steps = 0;
         double hr    = 0;
         for (final p in data) {
-          final val = (p.value as NumericHealthValue).numericValue.toDouble();
+          double val = 0;
+          if (p.value is NumericHealthValue) {
+            val = (p.value as NumericHealthValue).numericValue.toDouble();
+          }
           if (p.type == HealthDataType.STEPS)      steps += val.toInt();
           if (p.type == HealthDataType.HEART_RATE) hr = val;
         }
