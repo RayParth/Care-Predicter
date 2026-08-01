@@ -137,7 +137,7 @@ def google_login(user: UserCreate, db: Session = Depends(get_db)):
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
-        for field in ["name", "gender", "age", "weight", "height", "blood_group", "role"]:
+        for field in ["name", "gender", "age", "weight", "height", "blood_group"]:
             val = getattr(user, field, None)
             if val:
                 setattr(existing, field, val)
@@ -151,7 +151,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     new_user = User(
         email          = user.email,
         name           = user.name,
-        role           = user.role,
+        role           = "patient",
         gender         = user.gender,
         age            = user.age,
         weight         = user.weight,
