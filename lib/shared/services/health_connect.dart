@@ -201,6 +201,8 @@ class HealthConnectService {
       print('[HealthConnect] Fetch error: $e');
     }
 
+    print('[HealthConnect] RESULT: $result');
+
     return result;
   }
 
