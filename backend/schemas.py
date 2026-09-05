@@ -48,18 +48,52 @@ class OtpVerify(BaseModel):
 # for a real doctor. The backend was saving any number without complaint.
 class VitalCreate(BaseModel):
     user_id: int
-    heart_rate: float = Field(..., ge=0, le=300,
-        description="Heart rate in bpm. Must be 0–300.")
-    spo2: float = Field(..., ge=0, le=100,
-        description="Blood oxygen %. Must be 0–100.")
-    steps: int = Field(..., ge=0, le=100_000,
-        description="Step count. Must be 0–100,000.")
-    calories: float = Field(..., ge=0, le=10_000,
-        description="Active calories burned. Must be 0–10,000.")
-    sleep_hours: float = Field(..., ge=0, le=24,
-        description="Sleep duration in hours. Must be 0–24.")
-    temperature: float = Field(..., ge=0, le=50,
-        description="Body temperature in Celsius. Must be 0–50.")
+
+    heart_rate: float = Field(
+        ...,
+        ge=0,
+        le=300,
+        description="Heart rate in bpm. Must be 0–300."
+    )
+
+    spo2: float = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Blood oxygen %. Must be 0–100."
+    )
+
+    steps: int = Field(
+        ...,
+        ge=0,
+        le=100_000,
+        description="Step count. Must be 0–100,000."
+    )
+
+    calories: float = Field(
+        ...,
+        ge=0,
+        le=10_000,
+        description="Active calories burned. Must be 0–10,000."
+    )
+
+    sleep_hours: float = Field(
+        ...,
+        ge=0,
+        le=24,
+        description="Sleep duration in hours. Must be 0–24."
+    )
+
+    temperature: float = Field(
+        ...,
+        ge=20.0,
+        le=45.0,
+        description=(
+            "Body temperature in Celsius. Bounds are physical-plausibility "
+            "limits only. Medical classification happens in "
+            "vitals.py check_thresholds, not here."
+        )
+    )
 
 
 class VitalResponse(BaseModel):

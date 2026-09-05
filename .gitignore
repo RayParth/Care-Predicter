@@ -98,4 +98,4 @@ desktop.ini
 
 # ── ngrok ────────────────────────────────────────────
 *.ngrok.yml
-ngrok.log
+ngrok.logbackend/venv/ 
