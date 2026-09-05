@@ -53,6 +53,8 @@ class Settings:
     HR_LOW: float = 60.0          # FIXED: was 40.0, frontend uses 60.0 — now aligned
     TEMP_CRITICAL: float = 39.0
     TEMP_HIGH: float = 38.5
+    TEMP_LOW: float = 35.0             # mild hypothermia
+    TEMP_CRITICAL_LOW: float = 32.0    # moderate/severe hypothermia — immediate attention
 
     VITALS_HISTORY_LIMIT: int = 10
     LAB_HISTORY_LIMIT: int = 20

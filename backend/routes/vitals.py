@@ -43,6 +43,10 @@ def check_thresholds(vital: VitalCreate, db: Session):
             _add_alert("Temperature", f"{vital.temperature}\u00b0C", "High fever detected")
         elif vital.temperature > settings.TEMP_HIGH:
             _add_alert("Temperature", f"{vital.temperature}\u00b0C", "Elevated body temperature")
+        elif vital.temperature < settings.TEMP_CRITICAL_LOW:
+            _add_alert("Temperature", f"{vital.temperature}\u00b0C", "Severe hypothermia \u2014 immediate attention needed")
+        elif vital.temperature < settings.TEMP_LOW:
+            _add_alert("Temperature", f"{vital.temperature}\u00b0C", "Low body temperature detected")
 
     if alerts:
         db.commit()
