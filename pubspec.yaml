@@ -27,6 +27,9 @@ dependencies:
   # HTTP
   dio: ^5.4.0
 
+  # On-device Gemma 4 offline AI fallback
+  flutter_gemma: ^0.16.5
+
   # Local storage
   shared_preferences: ^2.2.2
 
