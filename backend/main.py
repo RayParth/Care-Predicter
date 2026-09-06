@@ -11,6 +11,7 @@ from routes.auth import router as auth_router
 from routes.vitals import router as vitals_router
 from routes.ocr import router as ocr_router
 from routes.consult import router as consult_router
+from routes.ai import router as ai_router
 
 # Create all database tables on startup
 Base.metadata.create_all(bind=engine)
@@ -38,6 +39,7 @@ app.include_router(auth_router)
 app.include_router(vitals_router)
 app.include_router(ocr_router)
 app.include_router(consult_router)
+app.include_router(ai_router)
 
 
 @app.get("/")
@@ -45,7 +47,13 @@ def root():
     return {
         "status": f"{settings.APP_NAME} running",
         "version": settings.APP_VERSION,
-        "endpoints": ["/auth", "/vitals", "/ocr", "/consult"]
+        "endpoints": [
+            "/auth",
+            "/vitals",
+            "/ocr",
+            "/consult",
+            "/ai",
+        ],
     }
 
 

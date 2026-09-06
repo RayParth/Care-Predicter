@@ -40,3 +40,6 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.42.0
 Werkzeug==3.1.5
+
+# Google Gemini API
+google-genai
