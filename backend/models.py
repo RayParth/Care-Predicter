@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, Boolean
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -42,7 +43,13 @@ class LabReport(Base):
     user_id       = Column(Integer, ForeignKey("users.id"))
     lab_name      = Column(String)
     report_date   = Column(String)
-    # Core values
+
+    # Dynamic structured laboratory data.
+    # New tests do NOT require new PostgreSQL columns.
+
+    extracted_data = Column(JSONB, nullable=False, default=dict)
+
+    # Legacy columns retained for backward compatibility with existing ML/UI code.
     glucose       = Column(Float, nullable=True)
     hemoglobin    = Column(Float, nullable=True)
     cholesterol   = Column(Float, nullable=True)
@@ -52,7 +59,6 @@ class LabReport(Base):
     wbc           = Column(Float, nullable=True)
     platelets     = Column(Float, nullable=True)
     rbc           = Column(Float, nullable=True)
-    # Extended values
     bilirubin     = Column(Float, nullable=True)
     sgpt          = Column(Float, nullable=True)
     sgot          = Column(Float, nullable=True)
@@ -100,5 +106,4 @@ class OtpCode(Base):
     code       = Column(String)
     expires_at = Column(DateTime)
     used       = Column(Boolean, default=False)
-    # THIS WAS MISSING — needed for rate limiting to work correctly
     created_at = Column(DateTime, default=datetime.utcnow)

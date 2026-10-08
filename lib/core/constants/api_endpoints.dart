@@ -35,6 +35,10 @@ class ApiEndpoints {
   // ── Health check ──────────────────────────────────────────────────────────
   static const String health = '/health';
 
+  // ── AI ────────────────────────────────────────────────────────────────────
+  // POST /ai/chat
+  static const String aiChat = '/ai/chat';
+
   static String withId(String base, int id) =>
       base.contains('{id}') ? base.replaceFirst('{id}', '$id') : '$base/$id';
 }

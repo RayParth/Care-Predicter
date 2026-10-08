@@ -178,26 +178,17 @@ class LabUploadTab extends ConsumerWidget {
   }
 
   Widget _reportCard(Map<String, dynamic> report, bool isLatest) {
-    final labName    = report['lab_name'] ?? 'Lab report';
+    final labName = report['lab_name'] ?? 'Lab report';
     final uploadedAt = report['uploaded_at'] ?? '';
-    String dateStr   = '';
-    if (uploadedAt.isNotEmpty) {
+    String dateStr = '';
+    if (uploadedAt is String && uploadedAt.isNotEmpty) {
       try {
         final dt = DateTime.parse(uploadedAt);
         dateStr = '${dt.day}/${dt.month}/${dt.year}';
       } catch (_) {}
     }
 
-    final keys = [
-      'hemoglobin', 'rbc', 'wbc', 'platelets', 'glucose',
-      'cholesterol', 'triglycerides', 'creatinine', 'uric_acid',
-      'sgpt', 'sgot', 'hba1c', 'tsh', 'vitamin_d', 'vitamin_b12',
-      'sodium', 'potassium', 'ldl', 'hdl'
-    ];
-    final values = <String, dynamic>{};
-    for (final k in keys) {
-      if (report[k] != null && report[k] != 0) values[k] = report[k];
-    }
+    final values = _extractTestMap(report);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -219,17 +210,24 @@ class LabUploadTab extends ConsumerWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(labName,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary)),
-                  if (dateStr.isNotEmpty)
-                    Text(dateStr,
-                        style: const TextStyle(
-                            fontSize: 10, color: AppColors.textHint)),
-                ]),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(labName.toString(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                      if (dateStr.isNotEmpty)
+                        Text(dateStr,
+                            style: const TextStyle(
+                                fontSize: 10, color: AppColors.textHint)),
+                    ],
+                  ),
+                ),
                 Row(children: [
                   if (isLatest)
                     const StatusBadge(label: 'Latest', type: BadgeType.normal),
@@ -243,33 +241,11 @@ class LabUploadTab extends ConsumerWidget {
           ...values.entries.take(5).toList().asMap().entries.map((e) {
             final isLast = e.key == values.entries.take(5).length - 1 &&
                 values.length <= 5;
-            final k   = e.value.key;
-            final v   = e.value.value;
-            final lbl = k[0].toUpperCase() + k.substring(1).replaceAll('_', ' ');
-            final val = v is num
-                ? v.toStringAsFixed(v % 1 == 0 ? 0 : 1)
-                : v.toString();
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(
-                border: isLast
-                    ? null
-                    : Border(
-                    bottom:
-                    BorderSide(color: AppColors.border, width: 0.5)),
-              ),
-              child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(lbl,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
-                    Text(val,
-                        style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary)),
-                  ]),
+            final test = e.value.value;
+            return _testValueRow(
+              e.value.key,
+              test,
+              isLast: isLast,
             );
           }),
           if (values.length > 5)
@@ -282,6 +258,111 @@ class LabUploadTab extends ConsumerWidget {
           else
             const SizedBox(height: 8),
         ]),
+      ),
+    );
+  }
+
+  Map<String, dynamic> _extractTestMap(Map<String, dynamic> report) {
+    final extracted = report['extracted_data'];
+    if (extracted is Map) {
+      final tests = extracted['tests'];
+      if (tests is Map) {
+        return Map<String, dynamic>.from(tests);
+      }
+    }
+
+    // Compatibility with reports created before dynamic extraction.
+    final legacyKeys = [
+      'hemoglobin', 'rbc', 'wbc', 'platelets', 'glucose',
+      'cholesterol', 'triglycerides', 'creatinine', 'uric_acid',
+      'bilirubin', 'sgpt', 'sgot', 'hba1c', 'tsh', 'vitamin_d',
+      'vitamin_b12', 'sodium', 'potassium', 'calcium', 'ldl', 'hdl',
+      'mcv', 'mch', 'pcv'
+    ];
+
+    final values = <String, dynamic>{};
+    for (final key in legacyKeys) {
+      final value = report[key];
+      if (value != null && value != 0) {
+        values[key] = {
+          'display_name': _prettyLabel(key),
+          'value': value,
+          'unit': null,
+          'reference_range': null,
+          'qualitative_result': null,
+          'flag': null,
+        };
+      }
+    }
+    return values;
+  }
+
+  String _prettyLabel(String key) {
+    if (key.isEmpty) return key;
+    return key
+        .split('_')
+        .map((part) => part.isEmpty
+        ? part
+        : '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
+
+  String _formatValue(dynamic value) {
+    if (value == null) return 'Not reported';
+    if (value is num) {
+      return value % 1 == 0 ? value.toStringAsFixed(0) : value.toStringAsFixed(2);
+    }
+    return value.toString();
+  }
+
+  String _testDisplayValue(String key, dynamic rawTest) {
+    if (rawTest is Map) {
+      final qualitative = rawTest['qualitative_result'];
+      final value = rawTest['value'];
+      final unit = rawTest['unit'];
+      final valuePart = qualitative != null && qualitative.toString().isNotEmpty
+          ? qualitative.toString()
+          : _formatValue(value);
+      final unitPart = unit != null && unit.toString().isNotEmpty
+          ? ' ${unit.toString()}'
+          : '';
+      return '$valuePart$unitPart';
+    }
+    return _formatValue(rawTest);
+  }
+
+  Widget _testValueRow(String key, dynamic rawTest, {bool isLast = false}) {
+    final label = rawTest is Map && rawTest['display_name'] != null
+        ? rawTest['display_name'].toString()
+        : _prettyLabel(key);
+    final value = _testDisplayValue(key, rawTest);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary)),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(value,
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary)),
+          ),
+        ],
       ),
     );
   }
@@ -398,31 +479,61 @@ class LabUploadTab extends ConsumerWidget {
   Future<void> _upload(
       BuildContext context, WidgetRef ref, File file, String name) async {
     ref.read(_extractingProvider.notifier).state = true;
-    ref.read(_ocrResultsProvider.notifier).state  = {};
-    ref.read(_errorProvider.notifier).state       = null;
-    ref.read(_savedProvider.notifier).state       = false;
-    ref.read(_rawTextProvider.notifier).state     = '';
+    ref.read(_ocrResultsProvider.notifier).state = {};
+    ref.read(_errorProvider.notifier).state = null;
+    ref.read(_savedProvider.notifier).state = false;
+    ref.read(_rawTextProvider.notifier).state = '';
 
     try {
       final userId = ref.read(userProfileProvider).backendUserId;
 
-      // LabService handles all the Dio logic internally
       final data = await LabService.uploadLabReport(
-        file: file, fileName: name, userId: userId,
+        file: file,
+        fileName: name,
+        userId: userId,
       );
 
-      final extracted = (data['extracted_values'] as Map<String, dynamic>?) ?? {};
-      final rawText   = (data['raw_text'] as String?) ?? '';
+      final dynamicData = data['extracted_data'];
+      final extracted = dynamicData is Map
+          ? Map<String, dynamic>.from(dynamicData)
+          : <String, dynamic>{};
+      final rawText = (data['raw_text'] as String?) ?? '';
 
       ref.read(_rawTextProvider.notifier).state = rawText;
 
-      if (extracted.isNotEmpty) {
+      final tests = extracted['tests'];
+      if (tests is Map && tests.isNotEmpty) {
         ref.read(_ocrResultsProvider.notifier).state = extracted;
-        ref.read(_savedProvider.notifier).state      = true;
+        ref.read(_savedProvider.notifier).state = true;
         ref.invalidate(labHistoryProvider);
       } else {
-        ref.read(_errorProvider.notifier).state =
-        'OCR found no lab values.\n\nRaw: "${rawText.substring(0, rawText.length.clamp(0, 150))}"';
+        // Backward-compatible fallback if an older backend response is used.
+        final legacy = data['extracted_values'];
+        if (legacy is Map && legacy.isNotEmpty) {
+          ref.read(_ocrResultsProvider.notifier).state = {
+            'patient': {},
+            'report': {},
+            'tests': {
+              for (final entry in legacy.entries)
+                entry.key.toString(): {
+                  'display_name': _prettyLabel(entry.key.toString()),
+                  'value': entry.value,
+                  'unit': null,
+                  'reference_range': null,
+                  'qualitative_result': null,
+                  'flag': null,
+                }
+            },
+            'interpretation': [],
+            'other_information': {},
+          };
+          ref.read(_savedProvider.notifier).state = true;
+          ref.invalidate(labHistoryProvider);
+        } else {
+          final preview = rawText.substring(0, rawText.length.clamp(0, 150));
+          ref.read(_errorProvider.notifier).state =
+          'No laboratory values were extracted.\n\nRaw: "$preview"';
+        }
       }
     } on DioException catch (e) {
       ref.read(_errorProvider.notifier).state =
@@ -508,7 +619,13 @@ class LabUploadTab extends ConsumerWidget {
 
   Widget _resultsCard(BuildContext context, WidgetRef ref,
       Map<String, dynamic> results, bool saved) {
-    final entries = results.entries.toList();
+    final rawTests = results['tests'];
+    final tests = rawTests is Map
+        ? Map<String, dynamic>.from(rawTests)
+        : <String, dynamic>{};
+    final entries = tests.entries.toList();
+    final interpretation = results['interpretation'];
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: AppCard(
@@ -525,7 +642,7 @@ class LabUploadTab extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('OCR extracted values',
+                  const Text('Extracted laboratory data',
                       style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -539,34 +656,48 @@ class LabUploadTab extends ConsumerWidget {
             ),
           ),
           ...entries.asMap().entries.map((e) {
-            final isLast   = e.key == entries.length - 1;
-            final k        = e.value.key;
-            final v        = e.value.value;
-            final lbl      = k[0].toUpperCase() + k.substring(1).replaceAll('_', ' ');
-            final val      = v is double ? v.toStringAsFixed(1) : v.toString();
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                border: isLast
-                    ? null
-                    : Border(
-                    bottom:
-                    BorderSide(color: AppColors.border, width: 0.5)),
-              ),
-              child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(lbl,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
-                    Text(val,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary)),
-                  ]),
+            final isLast = e.key == entries.length - 1 &&
+                (interpretation is! List || interpretation.isEmpty);
+            return _testValueRow(
+              e.value.key,
+              e.value.value,
+              isLast: isLast,
             );
           }),
+          if (interpretation is List && interpretation.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: AppColors.border, width: 0.5),
+                ),
+              ),
+              child: const Text('Report interpretation',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary)),
+            ),
+            ...interpretation.map((item) => Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('• ',
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.primary)),
+                  Expanded(
+                    child: Text(item.toString(),
+                        style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                            height: 1.4)),
+                  ),
+                ],
+              ),
+            )),
+          ],
           Padding(
             padding: const EdgeInsets.all(12),
             child: saved
@@ -598,22 +729,48 @@ class LabUploadTab extends ConsumerWidget {
   }
 
   Widget _aiTip(Map<String, dynamic> results) {
+    final testsRaw = results['tests'];
+    final tests = testsRaw is Map
+        ? Map<String, dynamic>.from(testsRaw)
+        : <String, dynamic>{};
     final tips = <String>[];
 
-    void check(String k, String tip, bool Function(num) cond) {
-      final v = results[k];
-      if (v is num && cond(v)) tips.add(tip);
+    num? numericValue(String key) {
+      final test = tests[key];
+      if (test is Map) {
+        final value = test['value'];
+        return value is num ? value : num.tryParse(value?.toString() ?? '');
+      }
+      return test is num ? test : null;
     }
 
-    check('glucose',       'Glucose elevated — reduce refined sugar and carbs.',      (v) => v > 100);
-    check('triglycerides', 'Triglycerides borderline — reduce fried food, add omega-3.', (v) => v > 130);
-    check('cholesterol',   'Cholesterol elevated — add fibre, reduce saturated fats.',(v) => v > 190);
-    check('hemoglobin',    'Hemoglobin low — eat iron-rich foods: spinach, lentils, eggs.', (v) => v < 12);
-    check('creatinine',    'Creatinine slightly high — drink more water.',             (v) => v > 1.2);
-    check('sgpt',          'SGPT elevated — avoid alcohol and fatty food.',           (v) => v > 40);
+    void check(String key, String tip, bool Function(num) cond) {
+      final value = numericValue(key);
+      if (value != null && cond(value)) tips.add(tip);
+    }
+
+    // These are intentionally limited to the app's existing simple rules.
+    // Do not pretend that arbitrary lab values can be safely interpreted here.
+    check('glucose', 'Glucose is above the app\'s configured review threshold.',
+            (v) => v > 100);
+    check('triglycerides',
+        'Triglycerides are above the app\'s configured review threshold.',
+            (v) => v > 130);
+    check('cholesterol',
+        'Cholesterol is above the app\'s configured review threshold.',
+            (v) => v > 190);
+    check('hemoglobin',
+        'Hemoglobin is below the app\'s configured review threshold.',
+            (v) => v < 12);
+    check('creatinine',
+        'Creatinine is above the app\'s configured review threshold.',
+            (v) => v > 1.2);
+    check('sgpt', 'SGPT is above the app\'s configured review threshold.',
+            (v) => v > 40);
 
     if (tips.isEmpty) {
-      tips.add('All extracted values look within normal range. Keep up your healthy habits!');
+      tips.add(
+          'Values were extracted from the report. Use the laboratory reference ranges and a clinician for medical interpretation.');
     }
 
     return Padding(
@@ -626,7 +783,7 @@ class LabUploadTab extends ConsumerWidget {
             Icon(Icons.auto_awesome_rounded,
                 color: AppColors.primary, size: 16),
             SizedBox(width: 6),
-            Text('AI recommendation',
+            Text('Report note',
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -635,16 +792,19 @@ class LabUploadTab extends ConsumerWidget {
           const SizedBox(height: 8),
           ...tips.map((t) => Padding(
             padding: const EdgeInsets.only(bottom: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('• ',
-                  style: TextStyle(fontSize: 12, color: AppColors.primary)),
-              Expanded(
-                  child: Text(t,
-                      style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.primary,
-                          height: 1.5))),
-            ]),
+            child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('• ',
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.primary)),
+                  Expanded(
+                      child: Text(t,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.primary,
+                              height: 1.5))),
+                ]),
           )),
         ]),
       ),

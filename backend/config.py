@@ -65,6 +65,24 @@ class Settings:
     # Origin header the way a browser does — this matters if you ever add
     # a web admin/doctor dashboard. Do NOT ship "*" with allow_credentials=True
     # to production; browsers reject it and it's bad practice regardless.
+    # AI - Gemini
+    GEMINI_API_KEY: str = os.getenv(
+        "GEMINI_API_KEY",
+        ""
+    )
+
+    GEMINI_MODEL: str = os.getenv(
+        "GEMINI_MODEL",
+        "gemini-2.5-flash"
+    )
+
+    GEMINI_TIMEOUT_SECONDS: int = int(
+        os.getenv(
+            "GEMINI_TIMEOUT_SECONDS",
+            "60"
+        )
+    )
+
     CORS_ORIGINS: list = [
         o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
     ]
