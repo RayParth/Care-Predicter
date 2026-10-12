@@ -9,6 +9,8 @@
 *.env
 backend/.env
 backend/.env.*
+!.env.example
+!backend/.env.example
 secrets.json
 firebase_credentials.json
 google-services-secret.json

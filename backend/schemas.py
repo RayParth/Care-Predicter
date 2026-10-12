@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Any, Dict, Optional
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 
@@ -7,6 +7,7 @@ class UserCreate(BaseModel):
     email: str
     name: str
     role: str
+    id_token: Optional[str] = None   # Firebase ID token (required when REQUIRE_FIREBASE_TOKEN)
     password: Optional[str] = None
     gender: Optional[str] = None
     age: Optional[int] = None
@@ -49,6 +50,12 @@ class OtpVerify(BaseModel):
 class VitalCreate(BaseModel):
     user_id: int
 
+    # Offline sync support. recorded_at = when the reading was MEASURED on the
+    # phone (not when it reached the server); client_id = a UUID the app makes
+    # once per reading so retries can't create duplicates.
+    recorded_at: Optional[datetime] = None
+    client_id: Optional[str] = Field(default=None, max_length=64)
+
     heart_rate: float = Field(
         ...,
         ge=0,
@@ -86,7 +93,7 @@ class VitalCreate(BaseModel):
 
     temperature: float = Field(
         ...,
-        ge=20.0,
+        ge=0,
         le=45.0,
         description=(
             "Body temperature in Celsius. Bounds are physical-plausibility "
@@ -94,6 +101,20 @@ class VitalCreate(BaseModel):
             "vitals.py check_thresholds, not here."
         )
     )
+
+
+    @field_validator("temperature")
+    @classmethod
+    def _temp_zero_or_plausible(cls, v: float) -> float:
+        # 0 means "no temperature reading" (most wearables don't record one).
+        # Anything else must be physically plausible.
+        if v != 0 and v < 20.0:
+            raise ValueError("temperature must be 0 (not measured) or between 20 and 45 C")
+        return v
+
+
+class VitalBatch(BaseModel):
+    items: List[VitalCreate] = Field(..., min_length=1, max_length=200)
 
 
 class VitalResponse(BaseModel):

@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest
+httpx
+pgserver   # embedded Postgres so DB tests run with no setup

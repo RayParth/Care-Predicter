@@ -1,45 +1,29 @@
-annotated-doc==0.0.4
-annotated-types==0.7.0
-anyio==4.12.1
-bcrypt==4.2.1
-blinker==1.9.0
-cffi==2.0.0
-click==8.3.1
-colorama==0.4.6
-cryptography==46.0.6
-ecdsa==0.19.1
+# Web framework
 fastapi==0.135.1
-Flask==3.1.2
-flask-cors==6.0.2
-git-filter-repo==2.47.0
-greenlet==3.3.2
-h11==0.16.0
-idna==3.11
-itsdangerous==2.2.0
-Jinja2==3.1.6
-MarkupSafe==3.0.3
-packaging==26.0
-passlib==1.7.4
-pdf2image==1.17.0
-pillow==12.1.1
-psycopg2-binary==2.9.11
-pyasn1==0.6.3
-pycparser==3.0
+starlette==0.52.1
+uvicorn==0.42.0
 pydantic==2.12.5
 pydantic_core==2.41.5
-PyMuPDF==1.27.2.2
-pytesseract==0.3.13
-python-dotenv==1.2.2
-python-jose==3.5.0
 python-multipart==0.0.22
-rsa==4.9.1
-six==1.17.0
-SQLAlchemy==2.0.48
-starlette==0.52.1
-typing-inspection==0.4.2
-typing_extensions==4.15.0
-uvicorn==0.42.0
-Werkzeug==3.1.5
 
-# Google Gemini API
-google-genai
+# Database
+SQLAlchemy==2.0.48
+psycopg2-binary==2.9.11
+
+# Auth / security
+bcrypt==4.2.1
+python-jose==3.5.0
+cryptography==46.0.6
+python-dotenv==1.2.2
+
+# OCR (needs the `tesseract-ocr` OS package; the Dockerfile installs it)
+pillow==12.1.1
+pytesseract==0.3.13
+PyMuPDF==1.27.2.2
+
+# Gemini (used for chat + lab-report extraction). Also pulls in google-auth,
+# which firebase_auth_util.py uses to verify Firebase ID tokens.
+google-genai==2.29.0
+
+# Optional: only if you enable SMS OTP (routes/auth.py imports it lazily)
+# twilio

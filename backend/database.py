@@ -1,16 +1,23 @@
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
-import os
+from sqlalchemy.orm import declarative_base, sessionmaker
+from config import settings
 
-load_dotenv()
+if not settings.DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Copy backend/.env.example to backend/.env "
+        "(local) or set it in your hosting dashboard (production)."
+    )
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-engine = create_engine(DATABASE_URL)
+# pool_pre_ping: managed Postgres closes idle connections; without this the
+# first request after idle fails with "server closed the connection".
+engine = create_engine(
+    settings.DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 def get_db():
     db = SessionLocal()

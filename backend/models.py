@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from database import Base
@@ -34,7 +34,11 @@ class Vital(Base):
     sleep_hours = Column(Float)
     temperature = Column(Float)
     recorded_at = Column(DateTime, default=datetime.utcnow)
+    # Idempotency key from the app (one UUID per reading). NULLs are allowed and
+    # never conflict, so old rows and old app versions keep working.
+    client_id   = Column(String(64), nullable=True)
     user        = relationship("User", back_populates="vitals")
+    __table_args__ = (UniqueConstraint("user_id", "client_id", name="uq_vitals_user_client"),)
 
 
 class LabReport(Base):

@@ -1,3 +1,4 @@
+import secrets
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -11,12 +12,52 @@ from database import get_db
 from models import User, OtpCode
 from schemas import UserCreate, UserResponse, UserLogin, OtpRequest, OtpVerify
 from config import settings
+from firebase_auth_util import FirebaseTokenError, verify_firebase_id_token
 from security import (
     hash_password, verify_password, generate_otp, create_access_token,
     get_current_user, require_self_or_doctor,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+# ---------------------------------------------------------------------------
+# Identity proof + brute-force guard
+# ---------------------------------------------------------------------------
+
+def _require_google_identity(email: str, id_token: str | None) -> None:
+    """The caller must prove they own `email` via a Firebase ID token."""
+    if not settings.REQUIRE_FIREBASE_TOKEN:
+        print("[auth] WARNING: REQUIRE_FIREBASE_TOKEN is off - identity NOT verified (dev only)")
+        return
+    try:
+        claims = verify_firebase_id_token(id_token or "")
+    except FirebaseTokenError as exc:
+        print(f"[auth] firebase token rejected: {exc}")
+        raise HTTPException(status_code=401, detail="Google sign-in could not be verified.")
+    if (claims.get("email") or "").lower() != (email or "").lower():
+        raise HTTPException(status_code=401, detail="Google sign-in could not be verified.")
+
+
+_otp_fail: dict[str, list[float]] = {}
+OTP_MAX_FAILS = 5
+OTP_FAIL_WINDOW_S = 600
+
+
+def _otp_guard(email: str) -> None:
+    """Max 5 wrong OTP guesses per email per 10 min (a 6-digit code otherwise
+    falls to brute force well inside its 10 minute life)."""
+    import time
+    now = time.time()
+    fails = [t for t in _otp_fail.get(email.lower(), []) if now - t < OTP_FAIL_WINDOW_S]
+    _otp_fail[email.lower()] = fails
+    if len(fails) >= OTP_MAX_FAILS:
+        raise HTTPException(status_code=429, detail="Too many incorrect codes. Request a new code in a few minutes.")
+
+
+def _otp_failed(email: str) -> None:
+    import time
+    _otp_fail.setdefault(email.lower(), []).append(time.time())
 
 
 # OTP Email Delivery
@@ -113,6 +154,7 @@ def _user_dict(user: User) -> dict:
 
 @router.post("/google-login")
 def google_login(user: UserCreate, db: Session = Depends(get_db)):
+    _require_google_identity(user.email, user.id_token)
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
         access_token = create_access_token({"sub": existing.email})
@@ -135,6 +177,7 @@ def google_login(user: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/register")
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    _require_google_identity(user.email, user.id_token)
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
         for field in ["name", "gender", "age", "weight", "height", "blood_group"]:
@@ -231,7 +274,14 @@ class SetPasswordRequest(BaseModel):
     password: str
 
 @router.post("/set-password")
-def set_password(data: SetPasswordRequest, db: Session = Depends(get_db)):
+def set_password(
+        data: SetPasswordRequest,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+):
+    # Must be logged in AND can only change your own password.
+    if current_user.email.lower() != data.email.lower():
+        raise HTTPException(status_code=403, detail="You can only set your own password.")
     user = db.query(User).filter(User.email == data.email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -308,6 +358,7 @@ class ResetPasswordRequest(BaseModel):
 
 @router.post("/reset-password")
 def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    _otp_guard(data.email)
     record = db.query(OtpCode).filter(
         OtpCode.email == data.email,
         OtpCode.used  == False,
@@ -317,7 +368,8 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="No reset code found. Please request a new one.")
     if datetime.utcnow() > record.expires_at:
         raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
-    if record.code != data.otp:
+    if not secrets.compare_digest(record.code, data.otp):
+        _otp_failed(data.email)
         raise HTTPException(status_code=400, detail="Incorrect reset code.")
     if len(data.new_password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
@@ -370,6 +422,7 @@ def send_otp_endpoint(request: OtpRequest, db: Session = Depends(get_db)):
 
 @router.post("/verify-otp")
 def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
+    _otp_guard(data.email)
     record = db.query(OtpCode).filter(
         OtpCode.email == data.email,
         OtpCode.used  == False,
@@ -379,7 +432,8 @@ def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="No OTP found. Please request a new one.")
     if datetime.utcnow() > record.expires_at:
         raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
-    if record.code != data.code:
+    if not secrets.compare_digest(record.code, data.code):
+        _otp_failed(data.email)
         raise HTTPException(status_code=400, detail="Incorrect OTP.")
 
     record.used         = True

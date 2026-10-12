@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from datetime import datetime, timedelta, timezone
 from typing import List
+
+from sqlalchemy.exc import IntegrityError
 
 from database import get_db
 from models import Vital, Alert, User
-from schemas import VitalCreate, VitalResponse
+from schemas import VitalBatch, VitalCreate, VitalResponse
 from config import settings
 from security import get_current_user, require_self_or_doctor
 
@@ -26,9 +29,9 @@ def check_thresholds(vital: VitalCreate, db: Session):
     # SpO2 check
     if vital.spo2 > 0:
         if vital.spo2 < settings.SPO2_CRITICAL:
-            _add_alert("SpO\u2082", f"{vital.spo2}%", "Sp\u04502 critically low \u2014 immediate attention needed")
+            _add_alert("SpO\u2082", f"{vital.spo2}%", "SpO2 critically low \u2014 immediate attention needed")
         elif vital.spo2 < settings.SPO2_LOW:
-            _add_alert("SpO\u2082", f"{vital.spo2}%", "Sp\u04502 below safe threshold")
+            _add_alert("SpO\u2082", f"{vital.spo2}%", "SpO2 below safe threshold")
 
     # Heart rate check
     if vital.heart_rate > 0:
@@ -53,6 +56,49 @@ def check_thresholds(vital: VitalCreate, db: Session):
     return alerts
 
 
+ALERT_MAX_AGE = timedelta(minutes=60)   # don't raise "critical NOW" for a 6-hour-old reading
+MAX_FUTURE_SKEW = timedelta(minutes=5)
+
+
+def _clean_time(ts: datetime | None) -> datetime | None:
+    """Store naive UTC. Reject timestamps from the future (bad phone clock)."""
+    if ts is None:
+        return None
+    if ts.tzinfo is not None:
+        ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+    if ts > datetime.utcnow() + MAX_FUTURE_SKEW:
+        raise HTTPException(status_code=422, detail="recorded_at is in the future.")
+    return ts
+
+
+def _insert_vital(vital: VitalCreate, db: Session):
+    """Insert one reading. Returns (row, created). Re-sending the same
+    client_id returns the existing row instead of creating a duplicate."""
+    data = {k: v for k, v in vital.model_dump().items() if v is not None}
+    ts = _clean_time(vital.recorded_at)
+    if ts is not None:
+        data["recorded_at"] = ts
+    row = Vital(**data)
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = (
+            db.query(Vital)
+            .filter(Vital.user_id == vital.user_id, Vital.client_id == vital.client_id)
+            .first()
+        )
+        if existing is None:
+            raise
+        return existing, False
+    db.refresh(row)
+    age = datetime.utcnow() - (row.recorded_at or datetime.utcnow())
+    if age <= ALERT_MAX_AGE:
+        check_thresholds(vital, db)
+    return row, True
+
+
 @router.post("/", response_model=VitalResponse)
 def save_vitals(
     vital: VitalCreate,
@@ -60,17 +106,36 @@ def save_vitals(
     current_user: User = Depends(get_current_user),
 ):
     # A logged-in patient can only write vitals under their own user_id.
-    # Without this check, patient A's token could write into patient B's record
-    # by just changing the user_id in the request body.
     if vital.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Cannot save vitals for another user.")
+    row, _ = _insert_vital(vital, db)
+    return row
 
-    new_vital = Vital(**vital.dict())
-    db.add(new_vital)
-    db.commit()
-    db.refresh(new_vital)
-    check_thresholds(vital, db)
-    return new_vital
+
+@router.post("/batch")
+def save_vitals_batch(
+    batch: VitalBatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Offline sync: the app queues readings while offline and flushes them here.
+    Safe to retry: every item with a client_id is applied at most once.
+    Response lists what the app may now delete from its local queue."""
+    if any(v.user_id != current_user.id for v in batch.items):
+        raise HTTPException(status_code=403, detail="Cannot save vitals for another user.")
+
+    accepted, duplicates, rejected = [], [], []
+    for i, item in enumerate(batch.items):
+        key = item.client_id or f"#{i}"
+        try:
+            _, created = _insert_vital(item, db)
+            (accepted if created else duplicates).append(key)
+        except HTTPException as exc:
+            rejected.append({"client_id": key, "reason": exc.detail})
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            rejected.append({"client_id": key, "reason": str(exc)[:200]})
+    return {"accepted": accepted, "duplicates": duplicates, "rejected": rejected}
 
 
 @router.get("/{user_id}", response_model=List[VitalResponse])
