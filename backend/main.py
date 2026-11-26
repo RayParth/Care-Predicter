@@ -11,6 +11,7 @@ from routes.auth import router as auth_router
 from routes.vitals import router as vitals_router
 from routes.ocr import router as ocr_router
 from routes.consult import router as consult_router
+from routes.ai import router as ai_router
 
 # Create all database tables on startup
 Base.metadata.create_all(bind=engine)
@@ -38,6 +39,7 @@ app.include_router(auth_router)
 app.include_router(vitals_router)
 app.include_router(ocr_router)
 app.include_router(consult_router)
+app.include_router(ai_router)
 
 
 @app.get("/")
@@ -45,7 +47,13 @@ def root():
     return {
         "status": f"{settings.APP_NAME} running",
         "version": settings.APP_VERSION,
-        "endpoints": ["/auth", "/vitals", "/ocr", "/consult"]
+        "endpoints": [
+            "/auth",
+            "/vitals",
+            "/ocr",
+            "/consult",
+            "/ai",
+        ],
     }
 
 
@@ -57,9 +65,9 @@ def health_check():
 # Lab report endpoints (kept in main.py as they don't have their own router yet)
 @app.get("/labs/{user_id}")
 def get_lab_reports(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+        user_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
 ):
     require_self_or_doctor(user_id, current_user)
     reports = db.query(LabReport).filter(
@@ -71,7 +79,9 @@ def get_lab_reports(
         result.append({
             "id": r.id,
             "lab_name": r.lab_name,
+            "report_date": r.report_date,
             "uploaded_at": r.uploaded_at.isoformat(),
+            "extracted_data": r.extracted_data or {},
             "hemoglobin": r.hemoglobin,
             "rbc": r.rbc,
             "wbc": r.wbc,
@@ -99,9 +109,9 @@ def get_lab_reports(
 
 @app.get("/labs/{user_id}/latest")
 def get_latest_lab(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+        user_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
 ):
     require_self_or_doctor(user_id, current_user)
     report = db.query(LabReport).filter(
@@ -115,7 +125,9 @@ def get_latest_lab(
         "status": "ok",
         "id": report.id,
         "lab_name": report.lab_name,
+        "report_date": report.report_date,
         "uploaded_at": report.uploaded_at.isoformat(),
+        "extracted_data": report.extracted_data or {},
         "hemoglobin": report.hemoglobin,
         "rbc": report.rbc,
         "wbc": report.wbc,

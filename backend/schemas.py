@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Any, Dict, Optional
 from datetime import datetime
 
 
@@ -112,6 +112,10 @@ class VitalResponse(BaseModel):
 class LabReportResponse(BaseModel):
     id: int
     lab_name: Optional[str] = None
+    report_date: Optional[str] = None
+    extracted_data: Dict[str, Any] = Field(default_factory=dict)
+
+    # Legacy fields kept so existing consumers do not break during migration.
     glucose: Optional[float] = None
     hemoglobin: Optional[float] = None
     cholesterol: Optional[float] = None
@@ -134,6 +138,7 @@ class LabReportResponse(BaseModel):
     ldl: Optional[float] = None
     hdl: Optional[float] = None
     uploaded_at: datetime
+
     class Config:
         from_attributes = True
 

@@ -1,4 +1,5 @@
 import re
+import json
 import io
 import os
 import pytesseract
@@ -9,6 +10,9 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import LabReport, User
 from security import get_current_user
+from config import settings
+from google import genai
+from google.genai import types
 
 router = APIRouter()
 
@@ -203,16 +207,217 @@ def ocr_image(image: Image.Image) -> str:
             continue
     return best
 
+def _clean_json_response(text: str) -> str:
+    """Remove common markdown wrappers around Gemini JSON output."""
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
+
+def _normalise_test_key(name: str) -> str:
+    """Create a stable JSON key without losing the original display name."""
+    key = re.sub(r"[^a-zA-Z0-9]+", "_", (name or "").strip().lower()).strip("_")
+    return key or "unknown_test"
+
+
+def _normalise_dynamic_data(data: dict) -> dict:
+    """Validate the minimum structure and normalise test keys."""
+    if not isinstance(data, dict):
+        raise ValueError("Gemini returned a non-object JSON response")
+
+    patient = data.get("patient")
+    report = data.get("report")
+    tests = data.get("tests")
+    interpretation = data.get("interpretation")
+    other = data.get("other_information")
+
+    if not isinstance(patient, dict):
+        patient = {}
+    if not isinstance(report, dict):
+        report = {}
+    if not isinstance(tests, dict):
+        tests = {}
+    if not isinstance(interpretation, list):
+        interpretation = []
+    if not isinstance(other, dict):
+        other = {}
+
+    normalised_tests = {}
+    for original_name, raw_test in tests.items():
+        key = _normalise_test_key(str(original_name))
+        if isinstance(raw_test, dict):
+            item = {
+                "display_name": raw_test.get("display_name") or str(original_name),
+                "value": raw_test.get("value"),
+                "unit": raw_test.get("unit"),
+                "reference_range": raw_test.get("reference_range"),
+                "qualitative_result": raw_test.get("qualitative_result"),
+                "flag": raw_test.get("flag"),
+            }
+        else:
+            # Keep unexpected but valid values instead of silently dropping them.
+            item = {
+                "display_name": str(original_name),
+                "value": raw_test,
+                "unit": None,
+                "reference_range": None,
+                "qualitative_result": None,
+                "flag": None,
+            }
+        normalised_tests[key] = item
+
+    return {
+        "patient": patient,
+        "report": report,
+        "tests": normalised_tests,
+        "interpretation": [str(x) for x in interpretation if x is not None],
+        "other_information": other,
+    }
+
+
+async def extract_lab_data_with_gemini(text: str) -> dict:
+    """Extract every explicit laboratory field from OCR text into dynamic JSON."""
+    if not settings.GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+
+    prompt = f"""
+You are the structured-data extraction engine for a medical laboratory report.
+
+Extract ALL information explicitly present in the OCR text below.
+
+STRICT RULES:
+- Extract every laboratory test/parameter you can identify.
+- Do NOT use a predefined test list.
+- If a new test appears, create a new key automatically.
+- Never invent, estimate, infer, or calculate a missing laboratory value.
+- Preserve numeric values exactly as reported when possible.
+- Preserve units exactly or in a clear standard form.
+- Preserve reference ranges when present.
+- Preserve qualitative results such as Positive, Negative, Reactive,
+  Non-reactive, Equivocal, Normal, Abnormal, Present and Absent.
+- Preserve abnormal flags when explicitly present or clearly stated by the report.
+- Preserve laboratory interpretation/comments.
+- Extract patient name, age, sex, lab name, report date and specimen when present.
+- Do not provide a diagnosis or medical advice.
+- OCR may contain spelling errors. Correct obvious OCR corruption only when the
+  intended test name/value is unambiguous from surrounding text.
+- If the same test appears multiple times, keep the clinically relevant reported
+  result and do not manufacture an average.
+- Return JSON only. No markdown. No explanation outside JSON.
+
+Return exactly this top-level shape:
+{{
+  "patient": {{
+    "name": null,
+    "age": null,
+    "sex": null
+  }},
+  "report": {{
+    "lab_name": null,
+    "report_date": null,
+    "specimen": null
+  }},
+  "tests": {{}},
+  "interpretation": [],
+  "other_information": {{}}
+}}
+
+Each test value in "tests" must be an object like:
+"test name": {{
+  "display_name": "Original test name",
+  "value": null,
+  "unit": null,
+  "reference_range": null,
+  "qualitative_result": null,
+  "flag": null
+}}
+
+OCR TEXT:
+{text[:60000]}
+"""
+
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    response = await client.aio.models.generate_content(
+        model=settings.GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.0,
+            max_output_tokens=8192,
+            response_mime_type="application/json",
+        ),
+    )
+
+    raw = _clean_json_response(response.text or "")
+    if not raw:
+        raise ValueError("Gemini returned empty extraction output")
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Gemini returned invalid JSON: {exc}") from exc
+
+    return _normalise_dynamic_data(parsed)
+
+
+def _legacy_values_from_dynamic(dynamic_data: dict) -> dict:
+    """Map known dynamic tests into old DB columns for backward compatibility."""
+    tests = dynamic_data.get("tests", {})
+    aliases = {
+        "hemoglobin": "hemoglobin",
+        "hb": "hemoglobin",
+        "hgb": "hemoglobin",
+        "rbc": "rbc",
+        "wbc": "wbc",
+        "total_wbc": "wbc",
+        "platelets": "platelets",
+        "platelet_count": "platelets",
+        "plt": "platelets",
+        "glucose": "glucose",
+        "cholesterol": "cholesterol",
+        "total_cholesterol": "cholesterol",
+        "triglycerides": "triglycerides",
+        "creatinine": "creatinine",
+        "uric_acid": "uric_acid",
+        "bilirubin": "bilirubin",
+        "total_bilirubin": "bilirubin",
+        "sgpt": "sgpt",
+        "alt": "sgpt",
+        "sgot": "sgot",
+        "ast": "sgot",
+        "hba1c": "hba1c",
+        "tsh": "tsh",
+        "vitamin_d": "vitamin_d",
+        "vitamin_b12": "vitamin_b12",
+        "sodium": "sodium",
+        "potassium": "potassium",
+        "calcium": "calcium",
+        "ldl": "ldl",
+        "hdl": "hdl",
+        "mcv": "mcv",
+        "mch": "mch",
+        "pcv": "pcv",
+        "hct": "pcv",
+    }
+    result = {}
+    for key, item in tests.items():
+        target = aliases.get(key)
+        value = item.get("value") if isinstance(item, dict) else item
+        if target and isinstance(value, (int, float)) and not isinstance(value, bool):
+            result[target] = float(value)
+    return result
+
 
 # FIXED: user_id no longer has a default value of 1.
 # Previously: user_id: int = 1 meant any request without a user_id
 # silently saved lab data to user 1's account. Now it is required.
 @router.post("/ocr/upload")
 async def upload_lab_report(
-    file: UploadFile = File(...),
-    user_id: int = Form(...),       # FIXED: required, no default
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+        file: UploadFile = File(...),
+        user_id: int = Form(...),       # FIXED: required, no default
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
 ):
     # FIXED: previously any authenticated-or-not caller could pass any
     # user_id and their uploaded lab report would be saved under a stranger's
@@ -265,58 +470,116 @@ async def upload_lab_report(
     print(all_text[:2000])
     print("--- END PREVIEW ---")
 
-    extracted = parse_lab_values(all_text)
-    print(f"Extracted: {extracted}")
-
     if not all_text.strip():
         return JSONResponse({
             "status": "no_text",
             "extracted_values": {},
+            "extracted_data": {
+                "patient": {},
+                "report": {},
+                "tests": {},
+                "interpretation": [],
+                "other_information": {},
+            },
             "values_found": 0,
             "raw_text": "",
         })
 
+    # Primary extraction: Gemini turns arbitrary OCR content into structured JSON.
+    # Fallback: the old regex parser keeps the upload path usable if Gemini is down.
+    extraction_error = None
+    try:
+        extracted_data = await extract_lab_data_with_gemini(all_text)
+        extraction_method = "gemini"
+    except Exception as exc:
+        extraction_error = str(exc)
+        print(f"[OCR] Gemini extraction failed: {exc}")
+        legacy = parse_lab_values(all_text)
+        extracted_data = {
+            "patient": {},
+            "report": {},
+            "tests": {
+                k: {
+                    "display_name": k.replace("_", " ").title(),
+                    "value": v,
+                    "unit": None,
+                    "reference_range": None,
+                    "qualitative_result": None,
+                    "flag": None,
+                }
+                for k, v in legacy.items()
+            },
+            "interpretation": [],
+            "other_information": {},
+        }
+        extraction_method = "regex_fallback"
+
+    tests = extracted_data.get("tests", {})
+    legacy_values = _legacy_values_from_dynamic(extracted_data)
+    report_meta = extracted_data.get("report", {})
+
+    print(f"[OCR] Extraction method: {extraction_method}")
+    print(f"[OCR] Dynamic tests found: {len(tests)}")
+    print(f"[OCR] Tests: {list(tests.keys())}")
+
     try:
         report = LabReport(
             user_id=user_id,
-            lab_name=filename,
-            report_date="",
-            hemoglobin=extracted.get("hemoglobin"),
-            rbc=extracted.get("rbc"),
-            wbc=extracted.get("wbc"),
-            platelets=extracted.get("platelets"),
-            glucose=extracted.get("glucose"),
-            cholesterol=extracted.get("cholesterol"),
-            triglycerides=extracted.get("triglycerides"),
-            creatinine=extracted.get("creatinine"),
-            uric_acid=extracted.get("uric_acid"),
-            bilirubin=extracted.get("bilirubin"),
-            sgpt=extracted.get("sgpt"),
-            sgot=extracted.get("sgot"),
-            hba1c=extracted.get("hba1c"),
-            tsh=extracted.get("tsh"),
-            vitamin_d=extracted.get("vitamin_d"),
-            vitamin_b12=extracted.get("vitamin_b12"),
-            sodium=extracted.get("sodium"),
-            potassium=extracted.get("potassium"),
-            ldl=extracted.get("ldl"),
-            hdl=extracted.get("hdl"),
-            raw_text=all_text[:3000],
+            lab_name=report_meta.get("lab_name") or filename,
+            report_date=report_meta.get("report_date") or "",
+            extracted_data=extracted_data,
+            hemoglobin=legacy_values.get("hemoglobin"),
+            rbc=legacy_values.get("rbc"),
+            wbc=legacy_values.get("wbc"),
+            platelets=legacy_values.get("platelets"),
+            glucose=legacy_values.get("glucose"),
+            cholesterol=legacy_values.get("cholesterol"),
+            triglycerides=legacy_values.get("triglycerides"),
+            creatinine=legacy_values.get("creatinine"),
+            uric_acid=legacy_values.get("uric_acid"),
+            bilirubin=legacy_values.get("bilirubin"),
+            sgpt=legacy_values.get("sgpt"),
+            sgot=legacy_values.get("sgot"),
+            hba1c=legacy_values.get("hba1c"),
+            tsh=legacy_values.get("tsh"),
+            vitamin_d=legacy_values.get("vitamin_d"),
+            vitamin_b12=legacy_values.get("vitamin_b12"),
+            sodium=legacy_values.get("sodium"),
+            potassium=legacy_values.get("potassium"),
+            calcium=legacy_values.get("calcium"),
+            ldl=legacy_values.get("ldl"),
+            hdl=legacy_values.get("hdl"),
+            mcv=legacy_values.get("mcv"),
+            mch=legacy_values.get("mch"),
+            pcv=legacy_values.get("pcv"),
+            raw_text=all_text,
         )
         db.add(report)
         db.commit()
         db.refresh(report)
         report_id = report.id
-        print(f"Saved to DB: report_id={report_id}")
-    except Exception as e:
+        print(f"[OCR] Saved to DB: report_id={report_id}")
+    except Exception as exc:
         db.rollback()
         report_id = None
-        print(f"DB save error: {e}")
+        print(f"[OCR] DB save error: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to save extracted lab report.")
 
-    return JSONResponse({
-        "status": "success" if extracted else "no_values",
+    response = {
+        "status": "success" if tests else "no_values",
         "filename": filename,
-        "extracted_values": extracted,
-        "values_found": len(extracted),
+        "report_id": report_id,
+        "extraction_method": extraction_method,
+        "extracted_data": extracted_data,
+        "extracted_values": legacy_values,
+        "values_found": len(tests),
         "raw_text": all_text[:1000],
-    })
+    }
+
+    if extraction_error:
+        response["extraction_warning"] = (
+            "Gemini extraction was unavailable; legacy extraction was used."
+        )
+
+    return JSONResponse(response)
+
