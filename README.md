@@ -330,4 +330,4 @@ flutter test
 
 ## 📄 License
 
-This project is academic software developed for the B.Tech final-year project at Parul University (2025–2026). It is not licensed for commercial use.
+This project is academic software developed for the B.Tech final-year project at Parul University (2025–2027). It is not licensed for commercial use.
