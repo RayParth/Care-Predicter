@@ -1,56 +1,72 @@
-# 🩺 Care-Predicter — AI-Driven Health Monitoring System
+# 🩺 Care-Predicter — AI-Assisted Health Monitoring App
 
-> **Flutter + FastAPI · Android · PostgreSQL · Health Connect · OCR · ML**
+> **Flutter · FastAPI · PostgreSQL · Android Health Connect · Tesseract OCR · Google Gemini**
 
-A mobile health monitoring platform that collects real wearable data via Android Health Connect, extracts lab values from uploaded reports using Tesseract OCR, and runs LSTM / Random Forest / SVM anomaly detection on a FastAPI backend — all presented through a clean Flutter UI with role-based access for patients and doctors.
+Care-Predicter is a mobile health-monitoring platform. It reads wearable and phone health data through Android Health Connect, extracts values from uploaded lab reports using OCR and Gemini, raises rule-based alerts when vitals cross safe thresholds, and lets patients ask an AI assistant questions about their own health data. Doctors get a separate interface to follow their patients and consultation requests.
 
----
+> **Disclaimer:** Care-Predicter is an academic project. It is not a medical device and does not provide medical diagnosis or treatment advice.
 
-## 📱 Screenshots
-
-| Login | Patient Dashboard | Organ Map | Doctor Dashboard |
-|-------|------------------|-----------|-----------------|
-| Firebase Gmail auth | Live vitals + health score | Tap organ → view data | AI patient summaries |
-
-> Full screenshots available in `/docs/screenshots/` or in the project report.
+<!-- Add screenshots to docs/screenshots/ and link them here -->
 
 ---
 
 ## ✨ Features
 
-- **Real-time Health Dashboard** — heart rate, SpO2, steps, sleep, calories, temperature synced every 10 minutes from Android Health Connect
-- **OCR Lab Report Extraction** — upload a photo or PDF of a blood test; Tesseract v5 extracts glucose, cholesterol, hemoglobin, WBC, and more automatically
-- **AI Anomaly Detection** — LSTM + Random Forest + SVM ensemble (F1: 94.2%) detects health deterioration patterns in real time
-- **Composite Health Score** — weighted 0–100 index across all parameters with Excellent / Good / Caution / Critical bands
-- **Dynamic Organ Health Map** — tappable body diagram; each organ shows relevant health readings and an AI tip
-- **AI Chat Assistant** — ask natural language questions about your own health data; answers are grounded in your actual readings
-- **Emergency Alerts** — in-app + SMS notifications; rule-based fallback keeps alerts running if the ML service is down
-- **Doctor Consultation Module** — AI-generated patient summaries for doctors before each remote consultation
-- **Offline-first** — data queues in local SQLite when internet is unavailable and syncs automatically on reconnect
-- **Role-based Access** — separate interfaces for Patient, Doctor, and Admin roles via Firebase Auth
+### For patients
+- **Health dashboard** — vitals such as heart rate, SpO2, body temperature and steps, synced from Android Health Connect.
+- **Rule-based alerts** — the backend compares each new vital reading against configurable thresholds (SpO2, heart rate, temperature) and creates warning or critical alerts.
+- **Lab report upload with OCR** — upload a photo or PDF of a lab report. PyMuPDF and Tesseract read the text, Gemini converts it into structured JSON, and the result is stored in PostgreSQL (JSONB).
+- **AI health assistant** — ask questions in natural language. The backend calls Gemini with a safety-focused system prompt (no diagnosis, emergency escalation guidance, limited input and output size).
+- **Offline AI fallback** — if the cloud assistant is unavailable, the app can fall back to an on-device Gemma model (`flutter_gemma`).
+- **Organ map** — tappable body diagram that links health readings to organs.
+- **Consultation requests** — request a remote consultation with a doctor.
+
+### For doctors
+- Separate dashboard with a patient list, patient alerts and incoming consultation requests.
+
+### Accounts and security
+- Email registration with **OTP verification** (email via SMTP, SMS via Twilio when configured) and password reset.
+- **Google Sign-In** through Firebase Authentication.
+- Passwords hashed with **bcrypt**; sessions use **JWT** (HS256, 7-day expiry).
+- **Role-based access**: patient and doctor roles, with ownership checks so users can access only their own records.
+- Input validation with **Pydantic** (for example, physiological ranges on vitals and size limits on AI chat input).
+- Upload allowlist for lab reports (JPG, JPEG, PNG, PDF).
+- Secrets are read from environment variables, and the server refuses to start without `SECRET_KEY`. API docs are disabled when `ENV=production`.
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│   Presentation Tier — Flutter (Android)      │
-│  Login · Dashboard · Organ Map · AI Chat     │
-└────────────────┬────────────────────────────┘
-                 │ REST API + JWT (Dio)
-┌────────────────▼────────────────────────────┐
-│   Application Logic — FastAPI (Uvicorn)      │
-│  Auth · Health API · OCR Service · ML Engine │
-└────────────────┬────────────────────────────┘
-                 │ SQLAlchemy ORM
-┌────────────────▼────────────────────────────┐
-│   Data Tier — PostgreSQL v15                 │
-│  users · wearable_data · lab_results ·       │
-│  health_scores · alerts                      │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Presentation tier — Flutter (Android)            │
+│  Auth · Dashboard · Organ map · Lab upload ·      │
+│  AI chat · Consult · Doctor dashboard             │
+└───────────────────┬──────────────────────────────┘
+                    │ HTTPS REST + JWT (Dio)
+┌───────────────────▼──────────────────────────────┐
+│  Application tier — FastAPI (Uvicorn)             │
+│  /auth · /vitals · /ocr · /consult · /ai          │
+│  Pydantic validation · JWT auth · alert rules     │
+└───────┬───────────────────────┬──────────────────┘
+        │ SQLAlchemy ORM        │ HTTPS
+┌───────▼──────────┐   ┌────────▼─────────────────┐
+│  PostgreSQL      │   │  Google Gemini API        │
+│  users · vitals  │   │  (assistant + OCR         │
+│  lab_reports ·   │   │   text → structured JSON) │
+│  consultations · │   └──────────────────────────┘
+│  alerts · otp    │
+└──────────────────┘
 
-External: Health Connect API · Firebase Auth · Tesseract OCR
+External services: Android Health Connect · Firebase Auth ·
+Tesseract OCR · SMTP (email OTP) · Twilio (optional SMS OTP)
+```
+
+**Lab report flow**
+
+```
+Photo / PDF  →  FastAPI /ocr/upload  →  PyMuPDF + Tesseract (text)
+             →  Gemini (text → structured JSON)  →  PostgreSQL JSONB
 ```
 
 ---
@@ -59,153 +75,164 @@ External: Health Connect API · Firebase Auth · Tesseract OCR
 
 | Layer | Technology |
 |-------|-----------|
-| Mobile frontend | Flutter v3.x (Dart 3) |
-| State management | flutter_riverpod |
-| HTTP client | Dio |
-| Backend | FastAPI (Python 3.10+) on Uvicorn |
-| Database | PostgreSQL v15 |
-| ORM | SQLAlchemy v2 |
-| Authentication | Firebase Auth (Gmail) + JWT |
-| Health data | Android Health Connect API (SDK 34+) |
-| OCR | Tesseract OCR v5 + pdf2image |
-| ML models | TensorFlow/Keras (LSTM) + Scikit-learn (RF, SVM) |
-| Offline storage | SharedPreferences + local SQLite queue |
+| Mobile app | Flutter 3.x (Dart 3), Riverpod, go_router, Dio |
+| Health data | Android Health Connect (`health` package) |
+| On-device AI fallback | `flutter_gemma` |
+| Backend | FastAPI (Python 3.10+), Uvicorn |
+| Database | PostgreSQL 15+, SQLAlchemy 2 (psycopg2) |
+| Authentication | Firebase Auth (Google Sign-In), email + OTP, JWT (python-jose), bcrypt |
+| OCR | Tesseract 5, PyMuPDF, pdf2image, Pillow |
+| AI | Google Gemini API (`google-genai`) |
+| Notifications | SMTP email, Twilio SMS (optional) |
 
 ---
 
 ## 📋 Prerequisites
 
-Install these before starting — in this order:
+**Backend**
+- Python 3.10+
+- PostgreSQL 15+
+- Tesseract OCR 5 ([install guide](https://tesseract-ocr.github.io/tessdoc/Installation.html))
+- A Gemini API key ([Google AI Studio](https://aistudio.google.com/))
+- [ngrok](https://ngrok.com/download) (to reach your local backend from a physical phone)
 
-**Backend first:**
-- Python 3.10+ — [download](https://www.python.org/downloads/)
-- PostgreSQL 15 — [download](https://www.postgresql.org/download/)
-- Tesseract OCR v5 — [install guide](https://tesseract-ocr.github.io/tessdoc/Installation.html)
-- [ngrok](https://ngrok.com/download) — exposes your local backend to the Android device
+**Mobile**
+- Flutter SDK 3.x and Android Studio
+- A **physical Android device** (Android 8.0+, API 26+) with Health Connect installed. Health Connect does not work on emulators.
 
-**Then Flutter:**
-- Flutter SDK v3.x — [install guide](https://docs.flutter.dev/get-started/install)
-- Dart SDK v3.x (bundled with Flutter)
-- Android Studio Hedgehog or later — [download](https://developer.android.com/studio)
-- A physical Android device running Android 8.0+ (API 26+) with Health Connect installed
-
-**Then Firebase:**
-- A Firebase project with Google Sign-In enabled — [Firebase Console](https://console.firebase.google.com/)
+**Firebase**
+- A Firebase project with Google Sign-In enabled ([Firebase Console](https://console.firebase.google.com/))
 
 ---
 
 ## 🚀 Getting Started
 
-Follow these steps **in order** — the Flutter app depends on the backend URL, so get the backend running first.
+Set up the backend first, because the app needs the backend URL.
 
-### 1. Clone the repo
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/RayParth/Care-Predicter.git
 cd Care-Predicter
 ```
 
----
+### 2. Create the database
 
-### 2. Backend Setup
+```bash
+psql -U postgres -c "CREATE DATABASE care_predicter;"
+```
+
+Tables are created automatically the first time the backend starts (`Base.metadata.create_all`). There is no separate migration step yet.
+
+### 3. Backend setup
 
 ```bash
 cd backend
-
-# Create and activate virtual environment
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+pip install twilio                # optional: only if you want SMS OTP
 ```
 
-Create a `.env` file in the `backend/` folder:
+Create `backend/.env`:
 
 ```env
+# Required
+SECRET_KEY=replace_with_a_long_random_string
 DATABASE_URL=postgresql://username:password@localhost:5432/care_predicter
-SECRET_KEY=your_jwt_secret_key_here
-FIREBASE_PROJECT_ID=your_firebase_project_id
-TESSERACT_CMD=/usr/bin/tesseract   # Windows example: C:/Program Files/Tesseract-OCR/tesseract.exe
+
+# AI
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_TIMEOUT_SECONDS=60
+
+# Email OTP (Gmail SMTP — use an app password)
+SMTP_EMAIL=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+
+# Optional SMS OTP
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=
+
+# Optional
+ENV=development                   # set to "production" to disable /docs
+CORS_ORIGINS=                     # comma-separated origins, only needed for a web client
 ```
 
-Start the backend server:
+Generate a strong secret with:
 
 ```bash
-uvicorn main:app --reload
+python -c "import secrets; print(secrets.token_urlsafe(64))"
 ```
 
-Local API: `http://localhost:8000`
-Swagger docs: `http://localhost:8000/docs`
+**Tesseract path:** the path to the Tesseract executable is currently set in `backend/routes/ocr.py` (Windows default: `C:\Program Files\Tesseract-OCR\tesseract.exe`). Edit that line to match your system (Linux/macOS usually `/usr/bin/tesseract`).
 
----
-
-### 3. PostgreSQL Database Setup
+Start the server:
 
 ```bash
-# Create the database
-psql -U postgres -c "CREATE DATABASE care_predicter;"
-
-# Run migrations
-alembic upgrade head
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-> Make sure `DATABASE_URL` in your `.env` matches your local PostgreSQL credentials.
+- API: `http://localhost:8000`
+- Interactive docs: `http://localhost:8000/docs` (disabled when `ENV=production`)
+- Health check: `http://localhost:8000/health`
 
----
+### 4. Expose the backend with ngrok
 
-### 4. Expose Backend via ngrok
-
-Since the Flutter app runs on a **physical Android device**, it cannot reach `localhost` directly. Use ngrok to create a public tunnel to your local backend.
+A physical phone cannot reach `localhost`, so open a tunnel in a second terminal:
 
 ```bash
-# In a new terminal (keep uvicorn running in the other)
 ngrok http 8000
 ```
 
-ngrok will print a forwarding URL like:
+Copy the `https://…ngrok-free…` forwarding URL. On the free plan it changes each time you restart ngrok.
 
-```
-Forwarding   https://a1b2-103-xyz.ngrok-free.app -> http://localhost:8000
-```
-
-**Copy that `https://` URL** — you'll need it in the next step.
-
-> ⚠️ ngrok URLs change every time you restart ngrok (on the free plan). You'll need to update the Flutter config each session, or upgrade to a paid ngrok plan for a static domain.
-
----
-
-### 5. Flutter App Setup
+### 5. Flutter setup
 
 ```bash
-# From the project root
+# from the project root
 flutter pub get
 ```
 
-Open `lib/core/constants/api_constants.dart` (or equivalent config file) and paste your ngrok URL:
+Open `lib/core/constants/app_config.dart` and set `baseUrl` to your ngrok URL (or your deployed backend URL):
 
 ```dart
-const String baseUrl = 'https://a1b2-103-xyz.ngrok-free.app';
-// Replace with your actual ngrok URL each session
+static const String baseUrl = 'https://your-ngrok-url.ngrok-free.app';
 ```
 
-Run the app on your connected Android device:
+Run on a connected Android device:
 
 ```bash
 flutter run
 ```
 
-> **Note:** Health Connect requires a **physical Android device** running Android 8.0+ (API 26+) with the Health Connect app installed. It does not work on emulators.
+### 6. Firebase setup
+
+1. Create a project in the [Firebase Console](https://console.firebase.google.com/).
+2. Enable **Authentication → Sign-in method → Google**.
+3. Add an Android app using the package name from `android/app/build.gradle`.
+4. Add your SHA-1 fingerprint (needed for Google Sign-In).
+5. Download `google-services.json` and place it at `android/app/google-services.json` (replace the existing file with your own project's).
 
 ---
 
-### 6. Firebase Setup
+## 🔌 API Overview
 
-1. Go to [Firebase Console](https://console.firebase.google.com/) and create a project
-2. Enable **Authentication → Sign-in method → Google**
-3. Add an Android app — use the package name from `android/app/build.gradle` (e.g. `com.example.care_predicter`)
-4. Download `google-services.json` and place it at `android/app/google-services.json`
-5. Add your `FIREBASE_PROJECT_ID` to the backend `.env` file
+| Area | Endpoint | Purpose |
+|------|----------|---------|
+| Auth | `POST /auth/register`, `POST /auth/register-email` | Create an account |
+| Auth | `POST /auth/login-email`, `POST /auth/google-login` | Log in and receive a JWT |
+| Auth | `POST /auth/send-otp`, `POST /auth/verify-otp` | OTP verification |
+| Auth | `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/set-password` | Password management |
+| Auth | `GET/PUT /auth/profile/{user_id}`, `GET /auth/doctors` | Profile and doctor list |
+| Vitals | `POST /vitals/`, `GET /vitals/{user_id}`, `GET /vitals/{user_id}/latest` | Store and read vitals; creates alerts |
+| OCR | `POST /ocr/upload` | Upload a lab report (JPG, PNG, PDF) |
+| Consult | `POST /consult/`, `GET /consult/{patient_id}`, `GET /consult/doctor/{doctor_name}`, `PUT /consult/{id}/status` | Consultation requests |
+| AI | `POST /ai/chat` | Gemini health assistant |
+| System | `GET /health` | Health check |
+
+Most endpoints require an `Authorization: Bearer <token>` header. See `/docs` for the full schema.
 
 ---
 
@@ -213,75 +240,88 @@ flutter run
 
 ```
 Care-Predicter/
-├── lib/                        # Flutter app (Dart)
-│   ├── core/                   # Constants, themes, utilities
-│   ├── features/               # Feature modules (auth, dashboard, ocr, etc.)
-│   └── main.dart               # App entry point
-├── backend/                    # FastAPI backend (Python)
-│   ├── routes/                 # API route handlers
-│   ├── models/                 # SQLAlchemy DB models
-│   ├── services/               # Business logic (OCR, ML, alerts)
-│   ├── ml/                     # Trained ML model files
-│   ├── main.py                 # FastAPI app entry point
-│   └── requirements.txt        # Python dependencies
-├── android/                    # Android-specific Flutter config
-├── ios/                        # iOS-specific Flutter config
-├── test/                       # Flutter unit and widget tests
-├── pubspec.yaml                # Flutter dependencies
+├── lib/                         # Flutter app (Dart)
+│   ├── core/
+│   │   ├── ai/                  # Cloud + on-device AI service
+│   │   ├── constants/           # App config, API endpoints, theme tokens
+│   │   ├── network/             # Dio API client
+│   │   ├── providers/           # Riverpod providers
+│   │   └── theme/
+│   ├── features/
+│   │   ├── auth/                # Login, register, OTP, role select
+│   │   ├── dashboard/           # Patient home
+│   │   ├── lab/                 # Lab report upload
+│   │   ├── chat/                # AI assistant
+│   │   ├── organ_map/           # Organ map and detail screens
+│   │   ├── consult/             # Consultation requests
+│   │   ├── alert/               # Alerts
+│   │   └── doctor/              # Doctor dashboard, patients, alerts
+│   ├── shared/                  # Services and reusable widgets
+│   └── main.dart
+├── backend/                     # FastAPI backend (Python)
+│   ├── routes/                  # auth, vitals, ocr, consult, ai
+│   ├── models.py                # SQLAlchemy models
+│   ├── schemas.py               # Pydantic schemas
+│   ├── security.py              # Password hashing, JWT, access checks
+│   ├── config.py                # Settings from environment variables
+│   ├── database.py              # Engine and session
+│   ├── main.py                  # App entry point
+│   └── requirements.txt
+├── android/                     # Android config (Health Connect, Firebase)
+├── test/                        # Flutter tests
+├── pubspec.yaml
 └── README.md
 ```
 
 ---
 
-## 🤖 ML Models
+## 🔐 Configuration Reference
 
-Models are trained on the MIT-BIH Arrhythmia Database, PhysioNet MIMIC-III (subset), and UCI Heart Disease dataset (~180,000 labeled records).
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SECRET_KEY` | Yes | JWT signing secret. The server will not start without it. |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `GEMINI_API_KEY` | For AI | Gemini API key (used by `/ai/chat` and OCR extraction) |
+| `GEMINI_MODEL` | No | Default `gemini-2.5-flash` |
+| `GEMINI_TIMEOUT_SECONDS` | No | Default `60` |
+| `SMTP_EMAIL`, `SMTP_PASSWORD` | For email OTP | Gmail SMTP credentials |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Optional | SMS OTP |
+| `ENV` | No | `development` (default) or `production` (disables API docs) |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins for web clients |
 
-| Model | Accuracy | F1-Score |
-|-------|----------|----------|
-| Random Forest | 91.3% | 89.0% |
-| SVM (RBF Kernel) | 88.6% | 87.0% |
-| LSTM | 94.2% | 92.9% |
-| **Ensemble (RF + LSTM)** | **95.8%** | **94.2%** |
-
-To retrain models, open the notebooks in `backend/ml/notebooks/` in Google Colab and follow the instructions there.
-
----
-
-## 🔌 Key Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `SECRET_KEY` | JWT signing secret |
-| `FIREBASE_PROJECT_ID` | Firebase project ID for token verification |
-| `TESSERACT_CMD` | Path to Tesseract binary on your system |
+Never commit your `.env` file or API keys. `.env` is listed in `.gitignore`.
 
 ---
 
-## 🧪 Running Tests
+## 🧪 Testing
 
-**Flutter:**
+Automated tests are being added. The repository currently contains only a minimal Flutter smoke test.
+
 ```bash
 flutter test
 ```
 
-**Backend:**
-```bash
-cd backend
-pytest
-```
+---
+
+## 🗺️ Roadmap
+
+- Automated backend tests (authentication, access control, vitals validation)
+- Security hardening: server-side token verification, login and OTP attempt limits, upload size limits
+- Database migrations with Alembic
+- Gemini accuracy test set and per-request token and cost logging
+- Anomaly detection model trained on public health datasets (planned, not implemented yet)
+- Docker container and cloud deployment
 
 ---
 
 ## 👥 Contributors
 
-| Name | Roll No. |
-|------|----------|
-| Parth Ray | 2403031087129 | 
-| Khushi Shah | 2403031087157 | 
-| Dhara Patel | 2303031080223 | 
-| Meet Rana | 2403031087086 |
+| Name |
+|------|
+| Parth Ray |
+| Khushi Shah |
+| Dhara Patel |
+| Meet Rana |
 
 **Supervisor:** Ms. Sapna V. Bhimajiyani, Assistant Professor
 **Institution:** Parul Institute of Engineering and Technology, Parul University, Vadodara
@@ -290,4 +330,4 @@ pytest
 
 ## 📄 License
 
-This project is academic software developed for the B.Tech final year project at Parul University (2025–2026). Not licensed for commercial use.
+This project is academic software developed for the B.Tech final-year project at Parul University (2025–2027). It is not licensed for commercial use.
